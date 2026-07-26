@@ -11,6 +11,16 @@ import json
 import os
 from datetime import datetime
 
+import streamlit as st
+
+# Sayfa simgesini ve başlığını ayarlama
+st.set_page_config(
+    page_title="Kurye Takip",       # Ana ekrana eklerken önerilen varsayılan isim
+    page_icon="https://github.com/cllsenoll/KT-paneli/blob/main/1000122774.png",                 # İster bir emoji, ister bir görsel dosyası ("logo.png") veya internet adresi
+    layout="wide"
+)
+
+
 # Mobil Sayfa Ayarları
 st.set_page_config(
     page_title="Kurye Performans Paneli",
