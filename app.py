@@ -6,7 +6,7 @@ import os
 # Güncel Görsel Bağlantınız
 LOGO_URL = "https://raw.githubusercontent.com/cllsenoll/KT-paneli/refs/heads/main/1000122774.png"
 
-# Sayfa Yapılandırması (Görsel bağlantısı ikon olarak tanımlandı)
+# Sayfa Yapılandırması
 st.set_page_config(
     page_title="Kurye Performans Paneli", 
     page_icon=LOGO_URL, 
@@ -37,7 +37,11 @@ with col_title:
     st.title("Kurye Performans & Tahsilat Paneli")
     st.caption("Mobil Uyumlu Veri Girişi ve Raporlama Sistemi")
 
-KURYELER = [
+VERI_DOSYASI = "gunluk_kurye_verileri.json"
+KURYE_DOSYASI = "kurye_listesi.json"
+
+# Varsayılan Kurye Listesi
+VARSAYILAN_KURYELER = [
     "Ahmet Berkan Öksüz",
     "Alattin Cebeci",
     "Hasan Sağlam",
@@ -45,7 +49,18 @@ KURYELER = [
     "Suat Arı"
 ]
 
-VERI_DOSYASI = "gunluk_kurye_verileri.json"
+def kuryeleri_yukle():
+    if os.path.exists(KURYE_DOSYASI):
+        try:
+            with open(KURYE_DOSYASI, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return VARSAYILAN_KURYELER
+    return VARSAYILAN_KURYELER
+
+def kuryeleri_kaydet(liste):
+    with open(KURYE_DOSYASI, "w", encoding="utf-8") as f:
+        json.dump(liste, f, ensure_ascii=False, indent=4)
 
 def veri_yukle():
     if os.path.exists(VERI_DOSYASI):
@@ -60,12 +75,42 @@ def veri_kaydet(data):
     with open(VERI_DOSYASI, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
+if "kuryeler" not in st.session_state:
+    st.session_state["kuryeler"] = kuryeleri_yukle()
+
 if "veriler" not in st.session_state:
     st.session_state["veriler"] = veri_yukle()
 
+# --- SIDEBAR: KURYE YÖNETİMİ ---
+with st.sidebar:
+    st.header("⚙️ Kurye Yönetimi")
+    yeni_kurye = st.text_input("Yeni Kurye Adı Soyadı:")
+    if st.button("➕ Kurye Ekle"):
+        if yeni_kurye.strip():
+            if yeni_kurye.strip() not in st.session_state["kuryeler"]:
+                st.session_state["kuryeler"].append(yeni_kurye.strip())
+                kuryeleri_kaydet(st.session_state["kuryeler"])
+                st.success(f"{yeni_kurye.strip()} eklendi!")
+                st.rerun()
+            else:
+                st.warning("Bu kurye zaten listede var.")
+        else:
+            st.error("Lütfen geçerli bir isim girin.")
+
+    st.markdown("---")
+    silinecek_kurye = st.selectbox("Silinecek Kurye Seçin:", st.session_state["kuryeler"])
+    if st.button("🗑️ Seçili Kuryeyi Sil"):
+        st.session_state["kuryeler"].remove(silinecek_kurye)
+        kuryeleri_kaydet(st.session_state["kuryeler"])
+        if silinecek_kurye in st.session_state["veriler"]:
+            del st.session_state["veriler"][silinecek_kurye]
+            veri_kaydet(st.session_state["veriler"])
+        st.success(f"{silinecek_kurye} silindi!")
+        st.rerun()
+
 # --- VERİ GİRİŞ FORMU ---
 st.subheader("📝 Günlük Veri Girişi")
-secilen_kurye = st.selectbox("Kurye Seçin:", KURYELER)
+secilen_kurye = st.selectbox("Kurye Seçin:", st.session_state["kuryeler"])
 
 mevcut = st.session_state["veriler"].get(secilen_kurye, {})
 
@@ -110,14 +155,76 @@ st.markdown("---")
 st.subheader("📊 Genel Durum ve Performans")
 
 if st.session_state["veriler"]:
+    toplam_zimmet = sum(v.get("zimmet", 0) for v in st.session_state["veriler"].values())
     toplam_teslim = sum(v.get("teslim", 0) for v in st.session_state["veriler"].values())
     toplam_devir = sum(v.get("devir", 0) for v in st.session_state["veriler"].values())
-    toplam_tahsilat = sum(v.get("nakit", 0) + v.get("kart", 0) for v in st.session_state["veriler"].values())
+    toplam_nakit = sum(v.get("nakit", 0) for v in st.session_state["veriler"].values())
+    toplam_kart = sum(v.get("kart", 0) for v in st.session_state["veriler"].values())
+    toplam_tahsilat = toplam_nakit + toplam_kart
 
     kpi1, kpi2, kpi3 = st.columns(3)
     kpi1.metric("Toplam Teslim", f"{toplam_teslim} Adet")
     kpi2.metric("Toplam Devir", f"{toplam_devir} Adet")
-    kpi3.metric("Toplam Tahsilat", f"{toplam_tahsilat:,.0f} ₺")
+    kpi3.metric("Toplam Tahsilat", f"{toplam_tahsilat:,.2f} ₺")
+
+    st.markdown("---")
+
+    # --- ŞUBE PERFORMANS İBRESİ (GAUGE CHART) ---
+    st.markdown("### 🎯 Şube Teslimat Başarı Performansı")
+    
+    basari_orani = (toplam_teslim / toplam_zimmet * 100) if toplam_zimmet > 0 else 0
+
+    fig_gauge, ax_g = plt.subplots(figsize=(5, 3), subplot_kw={'projection': 'polar'})
+    fig_gauge.patch.set_facecolor('#0E1117')
+    ax_g.set_facecolor('#0E1117')
+
+    # İbre Grafiği Çizimi (Yarım Daire)
+    import numpy as np
+    theta = np.linspace(0, np.pi, 100)
+    r = 1
+
+    # Arka plan yarım daire halkası
+    ax_g.plot(theta, [r]*100, color="#30363D", linewidth=18)
+    
+    # Başarı oranına karşılık gelen renkli halka
+    doluluk_theta = np.linspace(np.pi, np.pi - (basari_orani / 100 * np.pi), 100)
+    
+    # Performans rengi belirleme
+    renk = "#EF4444" if basari_orani < 70 else "#F59E0B" if basari_orani < 85 else "#10B981"
+    ax_g.plot(doluluk_theta, [r]*100, color=renk, linewidth=18)
+
+    ax_g.set_theta_zero_location('W')
+    ax_g.set_theta_direction(-1)
+    ax_g.set_axis_off()
+
+    # İbre değerini yazdır
+    ax_g.text(0, 0, f"%{basari_orani:.1f}", horizontalalignment='center', verticalalignment='center', fontsize=22, fontweight='bold', color='white')
+    ax_g.text(0, -0.35, f"Zimmet: {toplam_zimmet} | Teslim: {toplam_teslim}", horizontalalignment='center', verticalalignment='center', fontsize=10, color='#8B949E')
+
+    st.pyplot(fig_gauge)
+
+    st.markdown("---")
+
+    # --- KURYE TAHSİLAT LİSTESİ ---
+    st.markdown("### 💰 Kurye Bazlı Tahsilat Listesi")
+    
+    tahsilat_verileri = []
+    for k, v in st.session_state["veriler"].items():
+        n = v.get("nakit", 0.0)
+        k_pos = v.get("kart", 0.0)
+        t = n + k_pos
+        if t > 0 or n > 0 or k_pos > 0:
+            tahsilat_verileri.append({
+                "Kurye": k,
+                "Nakit Tahsilat (₺)": f"{n:,.2f} ₺",
+                "POS / Kart Tahsilat (₺)": f"{k_pos:,.2f} ₺",
+                "Toplam Tahsilat (₺)": f"{t:,.2f} ₺"
+            })
+
+    if tahsilat_verileri:
+        st.dataframe(tahsilat_verileri, use_container_width=True)
+    else:
+        st.info("Henüz tahsilat verisi girilmedi.")
 
     st.markdown("---")
 
@@ -129,7 +236,7 @@ if st.session_state["veriler"]:
 
     for k, v in st.session_state["veriler"].items():
         parcalar = k.split()
-        kisa_isim = f"{parcalar[0]} {parcalar[-1]}"
+        kisa_isim = f"{parcalar[0]} {parcalar[-1]}" if len(parcalar) > 1 else parcalar[0]
         kurye_isimleri.append(kisa_isim)
         teslim_sayilari.append(v.get("teslim", 0))
         devir_sayilari.append(v.get("devir", 0))
