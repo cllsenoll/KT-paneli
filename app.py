@@ -3,10 +3,13 @@ import matplotlib.pyplot as plt
 import json
 import os
 
-# Sayfa Yapılandırması (Görseli sayfa simgesi/ikonu yaptık)
+# Güncel Görsel Bağlantınız
+LOGO_URL = "https://raw.githubusercontent.com/cllsenoll/KT-paneli/refs/heads/main/1000122774.png"
+
+# Sayfa Yapılandırması (Görsel bağlantısı ikon olarak tanımlandı)
 st.set_page_config(
     page_title="Kurye Performans Paneli", 
-    page_icon="logo.png", 
+    page_icon=LOGO_URL, 
     layout="centered"
 )
 
@@ -24,15 +27,11 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Üst Başlık ve Logo Görseli
+# Üst Başlık ve Logo Alanı
 col_logo, col_title = st.columns([1, 3])
 
 with col_logo:
-    # GitHub'a yüklediğin logo.png görselini burada gösteriyoruz
-    if os.path.exists("logo.png"):
-        st.image("logo.png", width=90)
-    else:
-        st.write("🚚")
+    st.image(LOGO_URL, width=90)
 
 with col_title:
     st.title("Kurye Performans & Tahsilat Paneli")
