@@ -196,6 +196,18 @@ if uploaded_file is not None:
                 # Açıklama
                 elif "aciklama" in norm_c or "açıklama" in norm_c:
                     col_map["aciklama"] = c
+                
+                # Firma / Alıcı Adı
+                elif any(k in norm_c for k in ["alici", "alici adi", "firma", "musteri", "unvan"]):
+                    col_map["firma"] = c
+
+                # Tahsilat Tutarı / Ücret
+                elif any(k in norm_c for k in ["tutar", "ucret", "fiyat", "tahsilat tutari", "bedel"]):
+                    col_map["tutar"] = c
+
+                # Ödeme / Tahsilat Tipi
+                elif any(k in norm_c for k in ["odeme tipi", "odeme türü", "tahsilat tipi", "odeme karsi"]):
+                    col_map["odeme_tipi"] = c
 
             if "durum" not in col_map:
                 for c in df_raw.columns:
@@ -216,8 +228,18 @@ if uploaded_file is not None:
                 
                 df["kanal"] = df[col_map["kanal"]].astype(str).str.strip() if "kanal" in col_map else ""
                 df["aciklama"] = df[col_map["aciklama"]].astype(str).str.strip() if "aciklama" in col_map else ""
+                df["firma"] = df[col_map["firma"]].astype(str).str.strip() if "firma" in col_map else ""
+                df["odeme_tipi"] = df[col_map["odeme_tipi"]].astype(str).str.strip() if "odeme_tipi" in col_map else ""
+
+                # Tutar temizleme ve sayıya çevirme
+                if "tutar" in col_map:
+                    df["tutar"] = df[col_map["tutar"]].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
+                    df["tutar"] = pd.to_numeric(df["tutar"], errors="coerce").fillna(0.0)
+                else:
+                    df["tutar"] = 0.0
 
                 kullanici_ozet = []
+                otomatik_tahsilat_listesi = []
                 personeller = df["zimmet_personel"].unique()
 
                 for p in personeller:
@@ -234,16 +256,22 @@ if uploaded_file is not None:
                     imza_sayisi = 0
                     ks_sayisi = 0
 
+                    auto_nakit = 0.0
+                    auto_kart = 0.0
+
                     for _, row in p_df.iterrows():
                         norm_durum = normalize_text(row["durum"])
-                        
                         is_teslim = any(k in norm_durum for k in ["teslim edildi", "teslimat yapildi", "teslim yapildi", "teslimdir"]) or norm_durum == "teslim"
                         
+                        tutar_val = float(row["tutar"])
+                        firma_val = str(row["firma"]) if row["firma"] and str(row["firma"]).lower() not in ["nan", "none", ""] else "Firma/Alıcı Belirtilmedi"
+                        odeme_tipi_val = normalize_text(row["odeme_tipi"])
+                        aciklama_val = str(row["aciklama"])
+
                         if is_teslim:
                             teslim_edildi_sayisi += 1
                             
                             kanal_val = str(row["kanal"]).upper()
-                            aciklama_val = str(row["aciklama"]).upper()
 
                             if "SMS" in kanal_val:
                                 sms_sayisi += 1
@@ -251,20 +279,39 @@ if uploaded_file is not None:
                                 imza_sayisi += 1
                             elif "KAPIYA BIRAKILDI" in kanal_val or "KS" in kanal_val:
                                 ks_sayisi += 1
-                            elif ("POS ENTEGRASYON" in aciklama_val):
+                            elif ("POS ENTEGRASYON" in aciklama_val.upper()):
                                 ks_sayisi += 1
                             else:
                                 ks_sayisi += 1
+
+                            # OTOMATİK TAHSİLAT HESAPLAMA VE FİRMA LİSTESİNE AKTARIM
+                            if tutar_val > 0:
+                                if "nakit" in odeme_tipi_val or "nakıt" in odeme_tipi_val:
+                                    auto_nakit += tutar_val
+                                    otomatik_tahsilat_listesi.append({
+                                        "Personel": p,
+                                        "Firma Adı": firma_val,
+                                        "Tutar (₺)": tutar_val,
+                                        "Açıklama": "Excel Otomatik Aktarım (Nakit)"
+                                    })
+                                elif any(k in odeme_tipi_val for k in ["kart", "pos", "kredi"]):
+                                    auto_kart += tutar_val
+                                    otomatik_tahsilat_listesi.append({
+                                        "Personel": p,
+                                        "Firma Adı": firma_val,
+                                        "Tutar (₺)": tutar_val,
+                                        "Açıklama": "Excel Otomatik Aktarım (Kredi Kartı / POS)"
+                                    })
+                                else:
+                                    # Ödeme tipi belirtilmemişse varsayılan olarak firmaya kaydet
+                                    otomatik_tahsilat_listesi.append({
+                                        "Personel": p,
+                                        "Firma Adı": firma_val,
+                                        "Tutar (₺)": tutar_val,
+                                        "Açıklama": "Excel Otomatik Aktarım"
+                                    })
                         else:
                             teslim_edilmedi_bekletiliyor_sayisi += 1
-
-                    mevcut_veriler = st.session_state.veriler
-                    nakit_val = 0.0
-                    kart_val = 0.0
-                    if not mevcut_veriler.empty and p in mevcut_veriler["personel"].values:
-                        p_row = mevcut_veriler[mevcut_veriler["personel"] == p].iloc[0]
-                        nakit_val = float(p_row.get("nakit", 0.0))
-                        kart_val = float(p_row.get("kart", 0.0))
 
                     kullanici_ozet.append({
                         "personel": p,
@@ -274,18 +321,21 @@ if uploaded_file is not None:
                         "sms": sms_sayisi,
                         "imza": imza_sayisi,
                         "ks": ks_sayisi,
-                        "nakit": nakit_val,
-                        "kart": kart_val
+                        "nakit": auto_nakit,
+                        "kart": auto_kart
                     })
 
                 new_df = pd.DataFrame(kullanici_ozet)
 
                 st.session_state.veriler = new_df
+                if otomatik_tahsilat_listesi:
+                    st.session_state.tahsilatlar = pd.DataFrame(otomatik_tahsilat_listesi)
+
                 for p in personeller:
                     if p and p.lower() not in ["nan", "none", ""] and p not in st.session_state.personeller:
                         st.session_state.personeller.append(p)
 
-                st.success("✅ Dosya başarıyla analiz edildi ve durum sayıları güncellendi!")
+                st.success("✅ Dosya başarıyla analiz edildi! Personel performansları ve firma tahsilat listesi otomatik oluşturuldu.")
 
     except Exception as e:
         st.error(f"Dosya işlenirken hata oluştu: {e}")
@@ -362,7 +412,7 @@ else:
 st.markdown("---")
 
 # ==========================================
-# 4. PERSONEL TESLİM PERFORMANSI (GÜNCELLENEN İBRE)
+# 4. PERSONEL TESLİM PERFORMANSI
 # ==========================================
 st.markdown("### ⏱️ Personel Teslim Performansı")
 
@@ -443,7 +493,19 @@ st.subheader("🏢 Firma Bazlı Özel Tahsilat Girişi")
 
 personel_firma_secim = st.selectbox("Tahsilat Eklenecek Personel:", personel_listesi, key="personel_firma")
 
+# Seçili Personelin Mevcut Firma Tahsilat Listesi
+if not df_tahsilat.empty and "Personel" in df_tahsilat.columns:
+    personel_tahsilatlari = df_tahsilat[df_tahsilat["Personel"] == personel_firma_secim]
+    if not personel_tahsilatlari.empty:
+        st.markdown(f"**{personel_firma_secim} - Aktarılan/Kayıtlı Firma Tahsilatları:**")
+        df_goster = personel_tahsilatlari.reset_index(drop=True)
+        df_goster.index = range(1, len(df_goster) + 1)
+        st.dataframe(df_goster[["Firma Adı", "Tutar (₺)", "Açıklama"]], use_container_width=True)
+    else:
+        st.info(f"{personel_firma_secim} için henüz firma tahsilat kaydı bulunmuyor.")
+
 with st.form("firma_tahsilat_formu"):
+    st.markdown("**Ek Manuel Firma Tahsilatı Ekle:**")
     c_f1, c_f2, c_f3 = st.columns([2, 1.5, 2.5])
     with c_f1:
         firma_adi = st.text_input("Firma İsmi:")
@@ -460,7 +522,7 @@ if firma_kaydet_btn:
             "Personel": personel_firma_secim,
             "Firma Adı": firma_adi.strip(),
             "Tutar (₺)": firma_tutar,
-            "Açıklama": firma_aciklama.strip()
+            "Açıklama": firma_aciklama.strip() if firma_aciklama.strip() else "Manuel Eklendi"
         }
         yeni_tahsilat_df = pd.DataFrame([yeni_tahsilat])
         
@@ -469,15 +531,6 @@ if firma_kaydet_btn:
         st.rerun()
     else:
         st.error("Lütfen Firma Adı ve 0'dan büyük Tutar giriniz.")
-
-# Seçili Personelin Mevcut Firma Tahsilat Listesi
-if not df_tahsilat.empty and "Personel" in df_tahsilat.columns:
-    personel_tahsilatlari = df_tahsilat[df_tahsilat["Personel"] == personel_firma_secim]
-    if not personel_tahsilatlari.empty:
-        st.markdown(f"**{personel_firma_secim} - Kayıtlı Firma Tahsilatları:**")
-        df_goster = personel_tahsilatlari.reset_index(drop=True)
-        df_goster.index = range(1, len(df_goster) + 1)
-        st.dataframe(df_goster[["Firma Adı", "Tutar (₺)", "Açıklama"]], use_container_width=True)
 
 st.markdown("---")
 
