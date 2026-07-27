@@ -51,7 +51,7 @@ if "personeller" not in st.session_state:
 
 if "veriler" not in st.session_state:
     st.session_state.veriler = pd.DataFrame(columns=[
-        "personel", "zimmet", "teslim", "devir", "sms", "imza", "ks", "nakit", "kart"
+        "personel", "zimmet", "teslim", "teslim_edilmedi_bekletiliyor", "sms", "imza", "ks", "nakit", "kart"
     ])
 
 if "tahsilatlar" not in st.session_state:
@@ -224,7 +224,7 @@ if uploaded_file is not None:
                     # Teslim edilenler (Zimmet personeli == Teslim eden personel)
                     teslim_df = p_df[p_df["zimmet_personel"] == p_df["teslim_personel"]]
                     teslim_sayisi = len(teslim_df)
-                    devir_sayisi = zimmet_sayisi - teslim_sayisi
+                    teslim_edilmedi_bekletiliyor_sayisi = zimmet_sayisi - teslim_sayisi
 
                     # Kanal Hesaplamaları
                     sms_sayisi = 0
@@ -259,7 +259,7 @@ if uploaded_file is not None:
                         "personel": p,
                         "zimmet": zimmet_sayisi,
                         "teslim": teslim_sayisi,
-                        "devir": devir_sayisi,
+                        "teslim_edilmedi_bekletiliyor": teslim_edilmedi_bekletiliyor_sayisi,
                         "sms": sms_sayisi,
                         "imza": imza_sayisi,
                         "ks": ks_sayisi,
@@ -293,7 +293,7 @@ st.markdown("### 🎯 Şube Teslim Oranı")
 
 toplam_zimmet = int(df_veriler["zimmet"].sum()) if not df_veriler.empty else 0
 toplam_teslim = int(df_veriler["teslim"].sum()) if not df_veriler.empty else 0
-toplam_devir = int(df_veriler["devir"].sum()) if not df_veriler.empty else 0
+toplam_teslim_edilmedi_bekletiliyor = int(df_veriler["teslim_edilmedi_bekletiliyor"].sum()) if not df_veriler.empty else 0
 
 fig_sube = ibre_grafik_ciz(toplam_teslim, toplam_zimmet, "Şube Teslim Oranı", "Şube Genel Performansı")
 st.pyplot(fig_sube)
@@ -311,15 +311,15 @@ toplam_tahsilat = toplam_nakit + toplam_kart
 
 kpi1, kpi2, kpi3 = st.columns(3)
 kpi1.metric("Toplam Teslim", f"{toplam_teslim} Adet")
-kpi2.metric("Toplam Devir", f"{toplam_devir} Adet")
+kpi2.metric("Teslim Edilmedi / Bekletiliyor şubede", f"{toplam_teslim_edilmedi_bekletiliyor} Adet")
 kpi3.metric("Toplam Tahsilat", f"{toplam_tahsilat:,.2f} ₺")
 
 st.markdown("---")
 
 # ==========================================
-# 3. PERSONEL BAZLI TESLİMAT VS DEVİR
+# 3. PERSONEL BAZLI TESLİMAT VS TESLİM EDİLMEDİ / BEKLETİLİYOR ŞUBEDE
 # ==========================================
-st.markdown("### 📦 Personel Bazlı Teslimat vs Devir")
+st.markdown("### 📦 Personel Bazlı Teslimat vs Teslim Edilmedi / Bekletiliyor şubede")
 
 if not df_veriler.empty:
     fig_bar, ax_bar = plt.subplots(figsize=(6, 4))
@@ -331,7 +331,7 @@ if not df_veriler.empty:
     height = 0.35
 
     rects1 = ax_bar.barh([i - height/2 for i in y], df_veriler["teslim"], height, label='Teslim', color='#10B981')
-    rects2 = ax_bar.barh([i + height/2 for i in y], df_veriler["devir"], height, label='Devir', color='#EF4444')
+    rects2 = ax_bar.barh([i + height/2 for i in y], df_veriler["teslim_edilmedi_bekletiliyor"], height, label='Teslim Edilmedi / Bekletiliyor şubede', color='#EF4444')
 
     ax_bar.set_yticks(y)
     ax_bar.set_yticklabels(personel_names, color='white', fontsize=10)
@@ -384,7 +384,7 @@ with st.form("personel_formu"):
     with col1:
         zimmet = st.number_input("Zimmetli Kargo:", min_value=0, value=int(mevcut_row["zimmet"].values[0]) if not mevcut_row.empty else 0)
         teslim = st.number_input("Teslim Edilen:", min_value=0, value=int(mevcut_row["teslim"].values[0]) if not mevcut_row.empty else 0)
-        devir = st.number_input("Devir Edilen:", min_value=0, value=int(mevcut_row["devir"].values[0]) if not mevcut_row.empty else 0)
+        teslim_edilmedi_bekletiliyor = st.number_input("Teslim Edilmedi / Bekletiliyor şubede:", min_value=0, value=int(mevcut_row["teslim_edilmedi_bekletiliyor"].values[0]) if not mevcut_row.empty else 0)
     with col2:
         sms = st.number_input("SMS ile Teslim:", min_value=0, value=int(mevcut_row["sms"].values[0]) if not mevcut_row.empty else 0)
         imza = st.number_input("İmza ile Teslim:", min_value=0, value=int(mevcut_row["imza"].values[0]) if not mevcut_row.empty else 0)
@@ -405,7 +405,7 @@ if kaydet_btn:
         "personel": secilen_personel,
         "zimmet": zimmet,
         "teslim": teslim,
-        "devir": devir,
+        "teslim_edilmedi_bekletiliyor": teslim_edilmedi_bekletiliyor,
         "sms": sms,
         "imza": imza,
         "ks": ks,
