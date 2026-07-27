@@ -39,15 +39,17 @@ def normalize_text(text):
     text = text.replace('ı', 'i').replace('ğ', 'g').replace('ü', 'u').replace('ş', 's').replace('ö', 'o').replace('ç', 'c')
     return text
 
-# --- Tutar Dönüştürme Fonksiyonu (TL, Nokta, Virgül Temizleme) ---
+# --- Tutar Dönüştürme Fonksiyonu ---
 def parse_currency_val(val):
     if pd.isna(val) or val is None:
         return 0.0
+    
+    # Metne dönüştür ve simgeleri temizle
     val_str = str(val).strip().replace('₺', '').replace('TL', '').replace('tl', '').strip()
-    if not val_str or val_str.lower() in ['nan', 'none', 'null']:
+    if not val_str or val_str.lower() in ['nan', 'none', 'null', '']:
         return 0.0
     
-    # 1.234,56 -> 1234.56 dönüşümü
+    # 1.234,56 -> 1234.56 veya 1234,56 -> 1234.56 dönüşümü
     if ',' in val_str and '.' in val_str:
         val_str = val_str.replace('.', '').replace(',', '.')
     elif ',' in val_str:
@@ -236,8 +238,8 @@ if uploaded_files:
                     elif any(k in norm_c for k in ["musteri adi", "musteri", "alici", "alici adi", "firma", "unvan"]):
                         col_map["musteri_adi"] = c
 
-                    # Fatura Borcu / Tutar / Ücret
-                    elif any(k in norm_c for k in ["fatura borcu", "borc", "tutar", "ucret", "fiyat", "tahsilat tutari", "bedel"]):
+                    # GENİŞLETİLMİŞ FATURA BORCU / TUTAR / BORÇ TESPİTİ (₺ bağımsız)
+                    elif any(k in norm_c for k in ["fatura borcu", "borcu", "borc", "tutar", "ucret", "fiyat", "tahsilat tutari", "bedel", "alacak"]):
                         col_map["fatura_borcu"] = c
 
                     # Ödeme Tipi
@@ -253,14 +255,14 @@ if uploaded_files:
                     df["musteri_adi"] = df[col_map["musteri_adi"]].astype(str).str.strip() if "musteri_adi" in col_map else ""
                     df["odeme_tipi"] = df[col_map["odeme_tipi"]].astype(str).str.strip() if "odeme_tipi" in col_map else ""
 
-                    # AÇIKLAMA KONTROLÜ: Yoksa veya "nan" ise boş metin yap
+                    # Açıklama Kontrolü (Boş veya nan ise "")
                     if "aciklama" in col_map:
                         df["aciklama"] = df[col_map["aciklama"]].astype(str).str.strip()
                         df["aciklama"] = df["aciklama"].apply(lambda x: "" if str(x).lower() in ["nan", "none", "null"] else str(x))
                     else:
                         df["aciklama"] = ""
 
-                    # FATURA BORCU / TUTAR DÖNÜŞTÜRME
+                    # Fatura Borcu / Tutar
                     if "fatura_borcu" in col_map:
                         df["fatura_borcu"] = df[col_map["fatura_borcu"]].apply(parse_currency_val)
                     else:
@@ -308,7 +310,7 @@ if uploaded_files:
                             else:
                                 teslim_edilmedi_bekletiliyor_sayisi += 1
 
-                            # F4 Ödeme Listesine Ekleme (Açıklama boş kalabilir)
+                            # F4 Ödeme Listesine Kayıt
                             tum_f4_listesi.append({
                                 "Personel": p,
                                 "Müşteri Adı": musteri_val,
