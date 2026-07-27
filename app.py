@@ -2,7 +2,7 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
-import gspread
+import requests
 
 # Güncel Görsel Bağlantısı
 LOGO_URL = "https://raw.githubusercontent.com/cllsenoll/KT-paneli/refs/heads/main/1000122774.png"
@@ -43,56 +43,34 @@ with col_title:
     st.title("Kurye Performans & Tahsilat Paneli")
     st.caption("Mobil Uyumlu Veri Girişi ve Canlı Raporlama Sistemi")
 
-# --- GOOGLE SHEETS ENTEGRASYONU ---
+# --- GOOGLE SHEETS VE APPS SCRIPT ENTEGRASYONU ---
 SHEET_ID = "1bpU7FWdH6xGJ3Vl5DdbunrwXM_Q4yS7AYnL8kdUtBvg"
+# BURAYA 1. ADIMDA KOPYALADIĞIN WEB APP URL'SİNİ YAPIŞTIR:
+SCRIPT_URL = "https://script.google.com/macros/s/BURAYA_KENDI_SCRIPT_URL_ADRESINI_YAPISTIR/exec"
 
 def gsheet_oku(sheet_name):
     try:
         url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
         df = pd.read_csv(url)
-        # Boş sütunları ve satırları temizle
         df = df.dropna(how='all')
         return df
     except Exception as e:
         return pd.DataFrame()
 
-def verileri_cek():
+def gsheet_yaz(sheet_name, data):
     try:
-        df_kuryeler = gsheet_oku("Kuryeler")
-        df_veriler = gsheet_oku("Veriler")
-        df_tahsilat = gsheet_oku("FirmaTahsilat")
-        
-        return df_kuryeler, df_veriler, df_tahsilat
+        payload = {"sheet": sheet_name, "data": data}
+        res = requests.post(SCRIPT_URL, json=payload)
+        return res.status_code == 200
     except Exception as e:
-        st.error(f"Tablo verileri okunurken hata oluştu: {e}")
-        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+        st.error(f"Veri yazma hatası: {e}")
+        return False
 
-        
-        # Kuryeler Sayfası
-        try:
-            wks_kuryeler = gc.worksheet("Kuryeler")
-            df_kuryeler = pd.DataFrame(wks_kuryeler.get_all_records())
-        except:
-            df_kuryeler = pd.DataFrame()
-
-        # Veriler Sayfası
-        try:
-            wks_veriler = gc.worksheet("Veriler")
-            df_veriler = pd.DataFrame(wks_veriler.get_all_records())
-        except:
-            df_veriler = pd.DataFrame()
-
-        # FirmaTahsilat Sayfası
-        try:
-            wks_tahsilat = gc.worksheet("FirmaTahsilat")
-            df_tahsilat = pd.DataFrame(wks_tahsilat.get_all_records())
-        except:
-            df_tahsilat = pd.DataFrame()
-
-        return df_kuryeler, df_veriler, df_tahsilat
-    except Exception as e:
-        st.error(f"Tablo verileri okunurken hata oluştu: {e}")
-        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+def verileri_cek():
+    df_kuryeler = gsheet_oku("Kuryeler")
+    df_veriler = gsheet_oku("Veriler")
+    df_tahsilat = gsheet_oku("FirmaTahsilat")
+    return df_kuryeler, df_veriler, df_tahsilat
 
 df_kuryeler, df_veriler, df_tahsilat = verileri_cek()
 
@@ -117,7 +95,8 @@ with st.sidebar:
     if st.button("➕ Kurye Ekle"):
         if yeni_kurye.strip():
             if yeni_kurye.strip() not in kurye_listesi:
-                kurye_listesi.append(yeni_kurye.strip())
+                yeni_liste = kurye_listesi + [yeni_kurye.strip()]
+                gsheet_yaz("Kuryeler", yeni_liste)
                 st.success(f"{yeni_kurye.strip()} eklendi!")
                 st.rerun()
             else:
@@ -130,6 +109,7 @@ with st.sidebar:
         silinecek_kurye = st.selectbox("Silinecek Kurye Seçin:", kurye_listesi)
         if st.button("🗑️ Seçili Kuryeyi Sil"):
             kurye_listesi.remove(silinecek_kurye)
+            gsheet_yaz("Kuryeler", kurye_listesi)
             st.success(f"{silinecek_kurye} silindi!")
             st.rerun()
 
@@ -288,16 +268,9 @@ if kaydet_btn:
         "kart": kart
     }
     
-    yeni_df_satir = pd.DataFrame([yeni_veri])
-
-    if not df_veriler.empty and "kurye" in df_veriler.columns:
-        df_veriler = df_veriler[df_veriler["kurye"] != secilen_kurye]
-        df_veriler = pd.concat([df_veriler, yeni_df_satir], ignore_index=True)
-    else:
-        df_veriler = yeni_df_satir
-
-    st.success(f"✓ {secilen_kurye} verileri panele kaydedildi!")
-    st.rerun()
+    if gsheet_yaz("Veriler", yeni_veri):
+        st.success(f"✓ {secilen_kurye} verileri Google Sheets'e başarıyla kaydedildi!")
+        st.rerun()
 
 st.markdown("---")
 
@@ -327,15 +300,9 @@ if firma_kaydet_btn:
             "Tutar (₺)": firma_tutar,
             "Açıklama": firma_aciklama.strip()
         }
-        yeni_tahsilat_df = pd.DataFrame([yeni_tahsilat])
-        
-        if not df_tahsilat.empty and "Kurye" in df_tahsilat.columns:
-            df_tahsilat = pd.concat([df_tahsilat, yeni_tahsilat_df], ignore_index=True)
-        else:
-            df_tahsilat = yeni_tahsilat_df
-            
-        st.success(f"✓ {firma_adi} için {firma_tutar:,.2f} ₺ tahsilat eklendi.")
-        st.rerun()
+        if gsheet_yaz("FirmaTahsilat", yeni_tahsilat):
+            st.success(f"✓ {firma_adi} için {firma_tutar:,.2f} ₺ tahsilat eklendi.")
+            st.rerun()
     else:
         st.error("Lütfen Firma Adı ve 0'dan büyük Tutar giriniz.")
 
