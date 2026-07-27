@@ -93,7 +93,7 @@ with st.sidebar:
             st.rerun()
 
 # İbre Grafiği Oluşturma Fonksiyonu
-def ibre_grafik_ciz(teslim_edildi, zimmet, baslik_metni, alt_metin=""):
+def ibre_grafik_ciz(teslim_edildi, bekletiliyor, zimmet, baslik_metni, alt_metin=""):
     basari_orani = (teslim_edildi / zimmet * 100) if zimmet > 0 else 0
 
     fig, ax = plt.subplots(figsize=(5, 3), subplot_kw={'projection': 'polar'})
@@ -115,7 +115,7 @@ def ibre_grafik_ciz(teslim_edildi, zimmet, baslik_metni, alt_metin=""):
     ax.set_axis_off()
 
     ax.text(0, 0, f"%{basari_orani:.1f}", horizontalalignment='center', verticalalignment='center', fontsize=22, fontweight='bold', color='white')
-    ax.text(0, -0.35, f"{alt_metin}\nZimmet: {zimmet} | Teslim Edildi: {teslim_edildi}", horizontalalignment='center', verticalalignment='center', fontsize=10, color='#8B949E')
+    ax.text(0, -0.35, f"{alt_metin}\nZimmet: {zimmet} | Teslim: {teslim_edildi} | Bekleyen: {bekletiliyor}", horizontalalignment='center', verticalalignment='center', fontsize=9, color='#8B949E')
 
     return fig
 
@@ -197,7 +197,6 @@ if uploaded_file is not None:
                 elif "aciklama" in norm_c or "açıklama" in norm_c:
                     col_map["aciklama"] = c
 
-            # Eğer Durum sütunu bulunamazsa ikincil tarama
             if "durum" not in col_map:
                 for c in df_raw.columns:
                     norm_c = normalize_text(c)
@@ -211,7 +210,6 @@ if uploaded_file is not None:
             if eksikler:
                 st.error(f"Excel dosyasında zimmet personeli veya durum sütunları tespit edilemedi. Dosyadaki sütunlar: {list(df_raw.columns)}")
             else:
-                # Veriyi Temizleme
                 df = df_raw.copy()
                 df["zimmet_personel"] = df[col_map["zimmet_personel"]].astype(str).str.strip()
                 df["durum"] = df[col_map["durum"]].astype(str).str.strip()
@@ -229,7 +227,6 @@ if uploaded_file is not None:
                     p_df = df[df["zimmet_personel"] == p]
                     zimmet_sayisi = len(p_df)
 
-                    # TESLİM EDİLDİ VE TESLİM EDİLMEYEN/BEKLETİLEN AYRIMI
                     teslim_edildi_sayisi = 0
                     teslim_edilmedi_bekletiliyor_sayisi = 0
 
@@ -240,13 +237,11 @@ if uploaded_file is not None:
                     for _, row in p_df.iterrows():
                         norm_durum = normalize_text(row["durum"])
                         
-                        # Teslim Edilmiş Sayılan Durumlar
                         is_teslim = any(k in norm_durum for k in ["teslim edildi", "teslimat yapildi", "teslim yapildi", "teslimdir"]) or norm_durum == "teslim"
                         
                         if is_teslim:
                             teslim_edildi_sayisi += 1
                             
-                            # Kanal Tipleri
                             kanal_val = str(row["kanal"]).upper()
                             aciklama_val = str(row["aciklama"]).upper()
 
@@ -261,10 +256,8 @@ if uploaded_file is not None:
                             else:
                                 ks_sayisi += 1
                         else:
-                            # Teslim edilmeyen / Devir / Bekletilen
                             teslim_edilmedi_bekletiliyor_sayisi += 1
 
-                    # Manuel girilmiş tahsilat tutarlarını koru
                     mevcut_veriler = st.session_state.veriler
                     nakit_val = 0.0
                     kart_val = 0.0
@@ -287,7 +280,6 @@ if uploaded_file is not None:
 
                 new_df = pd.DataFrame(kullanici_ozet)
 
-                # Oturum verisini güncelle
                 st.session_state.veriler = new_df
                 for p in personeller:
                     if p and p.lower() not in ["nan", "none", ""] and p not in st.session_state.personeller:
@@ -313,7 +305,7 @@ toplam_zimmet = int(df_veriler["zimmet"].sum()) if not df_veriler.empty else 0
 toplam_teslim_edildi = int(df_veriler["teslim_edildi"].sum()) if not df_veriler.empty else 0
 toplam_teslim_edilmedi_bekletiliyor = int(df_veriler["teslim_edilmedi_bekletiliyor"].sum()) if not df_veriler.empty else 0
 
-fig_sube = ibre_grafik_ciz(toplam_teslim_edildi, toplam_zimmet, "Şube Teslim Oranı", "Şube Genel Performansı")
+fig_sube = ibre_grafik_ciz(toplam_teslim_edildi, toplam_teslim_edilmedi_bekletiliyor, toplam_zimmet, "Şube Teslim Oranı", "Şube Genel Performansı")
 st.pyplot(fig_sube)
 
 st.markdown("---")
@@ -370,7 +362,7 @@ else:
 st.markdown("---")
 
 # ==========================================
-# 4. PERSONEL TESLİM PERFORMANSI
+# 4. PERSONEL TESLİM PERFORMANSI (GÜNCELLENEN İBRE)
 # ==========================================
 st.markdown("### ⏱️ Personel Teslim Performansı")
 
@@ -381,10 +373,11 @@ if personel_listesi:
         row = df_veriler[df_veriler["personel"] == personel_ibre_secim].iloc[0]
         p_zimmet = int(row["zimmet"])
         p_teslim_edildi = int(row["teslim_edildi"])
+        p_bekletiliyor = int(row["teslim_edilmedi_bekletiliyor"])
     else:
-        p_zimmet, p_teslim_edildi = 0, 0
+        p_zimmet, p_teslim_edildi, p_bekletiliyor = 0, 0, 0
 
-    fig_personel = ibre_grafik_ciz(p_teslim_edildi, p_zimmet, "Personel Teslim Performansı", personel_ibre_secim)
+    fig_personel = ibre_grafik_ciz(p_teslim_edildi, p_bekletiliyor, p_zimmet, "Personel Teslim Performansı", personel_ibre_secim)
     st.pyplot(fig_personel)
 
 st.markdown("---")
