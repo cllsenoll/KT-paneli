@@ -37,6 +37,7 @@ st.markdown("""
 def normalize_text(text):
     text = str(text).strip().lower()
     text = text.replace('ı', 'i').replace('ğ', 'g').replace('ü', 'u').replace('ş', 's').replace('ö', 'o').replace('ç', 'c')
+    text = text.replace('İ', 'i').replace('Ğ', 'g').replace('Ü', 'u').replace('Ş', 's').replace('Ö', 'o').replace('Ç', 'c')
     return text
 
 # --- FATURA BORCU / TUTAR DÖNÜŞTÜRÜCÜ ---
@@ -63,14 +64,14 @@ def parse_currency_val(val):
     except ValueError:
         return 0.0
 
-# --- OTURUM BAŞLATMA ---
+# --- OTURUM BAŞLATMA (İstenen İsim Listesi) ---
 if "personeller" not in st.session_state:
     st.session_state.personeller = [
-        "Ahmet Berkan Öksüz",
-        "Alattin Cebeci",
-        "Hasan Sağlam",
-        "Mehmet Kaymaz",
-        "Suat Arı"
+        "ALATTİN CEBECİ",
+        "SUAT ARI",
+        "HASAN SAĞLAM",
+        "MEHMET KAYMAZ",
+        "AHMET BERKAN ÖKSÜZ"
     ]
 
 if "veriler" not in st.session_state:
@@ -99,9 +100,10 @@ with st.sidebar:
     yeni_personel = st.text_input("Yeni Personel Adı Soyadı:")
     if st.button("➕ Personel Ekle"):
         if yeni_personel.strip():
-            if yeni_personel.strip() not in st.session_state.personeller:
-                st.session_state.personeller.append(yeni_personel.strip())
-                st.success(f"{yeni_personel.strip()} eklendi!")
+            yeni_p_upper = yeni_personel.strip().upper()
+            if yeni_p_upper not in st.session_state.personeller:
+                st.session_state.personeller.append(yeni_p_upper)
+                st.success(f"{yeni_p_upper} eklendi!")
                 st.rerun()
             else:
                 st.warning("Bu personel zaten listede var.")
@@ -143,21 +145,20 @@ def ibre_grafik_ciz(teslim_edildi, bekletiliyor, zimmet, baslik_metni, alt_metin
 
     return fig
 
-# PDF Oluşturma
+# --- A4 DİKEY PDF OLUŞTURMA FONKSİYONU ---
 def generate_pdf_bytes(df_input, personel_adi=""):
-    fig, ax = plt.subplots(figsize=(8.5, max(len(df_input) * 0.4 + 2, 3)))
-    ax.axis('tight')
+    fig, ax = plt.subplots(figsize=(8.27, 11.69))
     ax.axis('off')
     
     title_str = f"F4 ÖDEME LİSTESİ - {personel_adi.upper()}" if personel_adi else "F4 ÖDEME LİSTESİ"
-    plt.title(title_str, fontsize=14, fontweight='bold', pad=20)
+    plt.title(title_str, fontsize=14, fontweight='bold', pad=30, y=0.98)
     
     table_data = [df_input.columns.tolist()] + df_input.values.tolist()
-    table = ax.table(cellText=table_data, colLabels=None, loc='center', cellLoc='left')
+    table = ax.table(cellText=table_data, colLabels=None, loc='upper center', cellLoc='left')
     
     table.auto_set_font_size(False)
     table.set_fontsize(10)
-    table.scale(1, 1.5)
+    table.scale(1, 1.8)
     
     for i in range(len(df_input.columns)):
         cell = table[(0, i)]
@@ -166,9 +167,17 @@ def generate_pdf_bytes(df_input, personel_adi=""):
         cell.get_text().set_weight('bold')
 
     buf = io.BytesIO()
-    plt.savefig(buf, format='pdf', bbox_inches='tight')
+    plt.savefig(buf, format='pdf', bbox_inches='tight', orientation='portrait')
     plt.close(fig)
     return buf.getvalue()
+
+# Esnek Personel Adı Eşleştirme Fonksiyonu
+def match_personel_name(raw_name, existing_list):
+    norm_raw = normalize_text(raw_name)
+    for p in existing_list:
+        if normalize_text(p) == norm_raw:
+            return p
+    return str(raw_name).strip().upper()
 
 # ==========================================
 # 📁 ÇOKLU EXCEL DOSYASI İLE OTOMATİK VERİ İŞLEME
@@ -220,18 +229,15 @@ if uploaded_files:
                 fatura_col = None
                 for c in df_raw.columns:
                     norm_c = normalize_text(c)
-                    # İrsaliye sütunlarını doğrudan ele
                     if "irsaliye" in norm_c:
                         continue
                     
-                    # Tam eşleşme önceliği
                     if norm_c in ["fatura borcu", "fatura borcun", "faturaborcu", "fatura borcu (tl)", "fatura borcu (₺)"]:
                         fatura_col = c
                         break
                     elif "fatura" in norm_c and "borc" in norm_c:
                         fatura_col = c
 
-                # Eğer "fatura borcu" bulunamazsa genel fatura/tutar sütunlarına bak
                 if not fatura_col:
                     for c in df_raw.columns:
                         norm_c = normalize_text(c)
@@ -248,27 +254,16 @@ if uploaded_files:
                 for c in df_raw.columns:
                     norm_c = normalize_text(c)
                     
-                    # Zimmet Personeli
                     if any(k in norm_c for k in ["zimmet personel", "at zimmet", "kurye", "dağıtıcı", "dagitici", "personel"]):
                         col_map["zimmet_personel"] = c
-                    
-                    # Teslim / Kargo Durumu
                     elif any(k in norm_c for k in ["teslim durumu", "kargo durumu", "son durum", "durum", "teslimat durumu"]):
                         col_map["durum"] = c
-                    
-                    # Teslimat Kanalı
                     elif any(k in norm_c for k in ["teslimat kanali", "kanal", "teslim tipi"]):
                         col_map["kanal"] = c
-                    
-                    # Açıklama
                     elif "aciklama" in norm_c or "açıklama" in norm_c:
                         col_map["aciklama"] = c
-                    
-                    # Müşteri Adı / Firma
                     elif any(k in norm_c for k in ["musteri adi", "musteri", "alici", "alici adi", "firma", "unvan"]):
                         col_map["musteri_adi"] = c
-
-                    # Ödeme Tipi
                     elif any(k in norm_c for k in ["odeme tipi", "odeme türü", "tahsilat tipi", "odeme karsi"]):
                         col_map["odeme_tipi"] = c
 
@@ -294,11 +289,14 @@ if uploaded_files:
 
                     personeller = df["zimmet_personel"].unique()
 
-                    for p in personeller:
-                        if p.lower() in ["nan", "", "none", "null"]:
+                    for raw_p in personeller:
+                        if str(raw_p).lower() in ["nan", "", "none", "null"]:
                             continue
                         
-                        p_df = df[df["zimmet_personel"] == p]
+                        # Esnek isim eşleştirme
+                        matched_p = match_personel_name(raw_p, st.session_state.personeller)
+                        
+                        p_df = df[df["zimmet_personel"] == raw_p]
                         zimmet_sayisi = len(p_df)
 
                         teslim_edildi_sayisi = 0
@@ -335,14 +333,14 @@ if uploaded_files:
                                 teslim_edilmedi_bekletiliyor_sayisi += 1
 
                             tum_f4_listesi.append({
-                                "Personel": p,
+                                "Personel": matched_p,
                                 "Müşteri Adı": musteri_val,
                                 "Fatura Borcu (₺)": borc_val,
                                 "Açıklama": aciklama_val
                             })
 
                         kullanici_ozet_listesi.append({
-                            "personel": p,
+                            "personel": matched_p,
                             "zimmet": zimmet_sayisi,
                             "teslim_edildi": teslim_edildi_sayisi,
                             "teslim_edilmedi_bekletiliyor": teslim_edilmedi_bekletiliyor_sayisi,
@@ -353,8 +351,8 @@ if uploaded_files:
                             "kart": auto_kart
                         })
 
-                        if p not in st.session_state.personeller:
-                            st.session_state.personeller.append(p)
+                        if matched_p not in st.session_state.personeller:
+                            st.session_state.personeller.append(matched_p)
 
         except Exception as e:
             st.error(f"{uploaded_file.name} işlenirken hata oluştu: {e}")
@@ -444,7 +442,7 @@ if personel_listesi:
         else:
             st.warning(f"⚠️ {f4_personel_secim} için yüklenen Excel dosyalarında herhangi bir kayıt bulunamadı.")
     else:
-        st.info("Henüz Excel dosyası yüklenmedi.")
+        st.info("Henüz Excel dosyası yüklenmedi veya işlem yapılmadı.")
 
 st.markdown("---")
 
