@@ -617,6 +617,8 @@ if not df_veriler.empty:
 st.markdown("---")
 
 # ==========================================
+
+                ==========================================
 # 3. F4 ÖDEME LİSTESİ (PERSONEL BAZLI OTOMATİK LİSTELEME)
 # ==========================================
 st.subheader("📋 F4 Ödeme Listesi")
@@ -657,9 +659,9 @@ if personel_listesi:
                     mime="text/csv"
                 )
         else:
-            st.warning(f"⚠️ {f4_personel_secim} için yüklenen Excel dosyalarında F4 kaydı bulunamadı.")
+            st.warning(f"⚠️ {f4_personel_secim} için yüklenen Excel dosyalarında herhangi bir kayıt bulunamadı.")
     else:
-        st.info("Henüz F4 Ödeme kaydı içeren bir dosya yüklenmedi.")
+        st.info("Henüz Excel dosyası yüklenmedi veya işlem yapılmadı.")
 
 st.markdown("---")
 
