@@ -33,13 +33,32 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- Metin Normalleştirme (Sütun Adı & Veri Eşleştirme İçin) ---
+# --- Metin Normalleştirme ---
 def normalize_text(text):
     text = str(text).strip().lower()
     text = text.replace('ı', 'i').replace('ğ', 'g').replace('ü', 'u').replace('ş', 's').replace('ö', 'o').replace('ç', 'c')
     return text
 
-# --- OTURUM / DAHİLİ HAFIZA (SESSION STATE) BAŞLATMA ---
+# --- Tutar Dönüştürme Fonksiyonu (TL, Nokta, Virgül Temizleme) ---
+def parse_currency_val(val):
+    if pd.isna(val) or val is None:
+        return 0.0
+    val_str = str(val).strip().replace('₺', '').replace('TL', '').replace('tl', '').strip()
+    if not val_str or val_str.lower() in ['nan', 'none', 'null']:
+        return 0.0
+    
+    # 1.234,56 -> 1234.56 dönüşümü
+    if ',' in val_str and '.' in val_str:
+        val_str = val_str.replace('.', '').replace(',', '.')
+    elif ',' in val_str:
+        val_str = val_str.replace(',', '.')
+        
+    try:
+        return float(val_str)
+    except ValueError:
+        return 0.0
+
+# --- OTURUM / DAHİLİ HAFIZA BAŞLATMA ---
 if "personeller" not in st.session_state:
     st.session_state.personeller = [
         "Ahmet Berkan Öksüz",
@@ -119,9 +138,9 @@ def ibre_grafik_ciz(teslim_edildi, bekletiliyor, zimmet, baslik_metni, alt_metin
 
     return fig
 
-# PDF Oluşturma Yardımcı Fonksiyonu
+# PDF Oluşturma Fonksiyonu
 def generate_pdf_bytes(df_input, personel_adi=""):
-    fig, ax = plt.subplots(figsize=(8.5, len(df_input) * 0.4 + 2))
+    fig, ax = plt.subplots(figsize=(8.5, max(len(df_input) * 0.4 + 2, 3)))
     ax.axis('tight')
     ax.axis('off')
     
@@ -167,29 +186,21 @@ if uploaded_files:
             file_bytes = uploaded_file.getvalue()
             df_raw = None
 
-            # 1. DENEME: Eski Format Excel (.xls)
+            # Excel Format Okuma
             try:
-                df_raw = pd.read_excel(io.BytesIO(file_bytes), engine="xlrd")
+                df_raw = pd.read_excel(io.BytesIO(file_bytes), engine="openpyxl")
             except Exception:
-                pass
-
-            # 2. DENEME: Yeni Format Excel (.xlsx)
-            if df_raw is None:
                 try:
-                    df_raw = pd.read_excel(io.BytesIO(file_bytes), engine="openpyxl")
+                    df_raw = pd.read_excel(io.BytesIO(file_bytes), engine="xlrd")
                 except Exception:
-                    pass
+                    try:
+                        df_raw = pd.read_excel(io.BytesIO(file_bytes))
+                    except Exception:
+                        pass
 
-            # 3. DENEME: Genel read_excel
+            # CSV Okuma
             if df_raw is None:
-                try:
-                    df_raw = pd.read_excel(io.BytesIO(file_bytes))
-                except Exception:
-                    pass
-
-            # 4. DENEME: CSV
-            if df_raw is None:
-                for enc in ["latin5", "utf-8", "iso-8859-9"]:
+                for enc in ["utf-8", "latin5", "iso-8859-9"]:
                     for sep in [";", ",", "\t"]:
                         try:
                             df_raw = pd.read_csv(io.BytesIO(file_bytes), sep=sep, encoding=enc, on_bad_lines="skip")
@@ -225,7 +236,7 @@ if uploaded_files:
                     elif any(k in norm_c for k in ["musteri adi", "musteri", "alici", "alici adi", "firma", "unvan"]):
                         col_map["musteri_adi"] = c
 
-                    # Fatura Borcu / Tutar
+                    # Fatura Borcu / Tutar / Ücret
                     elif any(k in norm_c for k in ["fatura borcu", "borc", "tutar", "ucret", "fiyat", "tahsilat tutari", "bedel"]):
                         col_map["fatura_borcu"] = c
 
@@ -239,13 +250,19 @@ if uploaded_files:
                     
                     df["durum"] = df[col_map["durum"]].astype(str).str.strip() if "durum" in col_map else "Teslim Edildi"
                     df["kanal"] = df[col_map["kanal"]].astype(str).str.strip() if "kanal" in col_map else ""
-                    df["aciklama"] = df[col_map["aciklama"]].astype(str).str.strip() if "aciklama" in col_map else ""
                     df["musteri_adi"] = df[col_map["musteri_adi"]].astype(str).str.strip() if "musteri_adi" in col_map else ""
                     df["odeme_tipi"] = df[col_map["odeme_tipi"]].astype(str).str.strip() if "odeme_tipi" in col_map else ""
 
+                    # AÇIKLAMA KONTROLÜ: Yoksa veya "nan" ise boş metin yap
+                    if "aciklama" in col_map:
+                        df["aciklama"] = df[col_map["aciklama"]].astype(str).str.strip()
+                        df["aciklama"] = df["aciklama"].apply(lambda x: "" if str(x).lower() in ["nan", "none", "null"] else str(x))
+                    else:
+                        df["aciklama"] = ""
+
+                    # FATURA BORCU / TUTAR DÖNÜŞTÜRME
                     if "fatura_borcu" in col_map:
-                        df["fatura_borcu"] = df[col_map["fatura_borcu"]].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
-                        df["fatura_borcu"] = pd.to_numeric(df["fatura_borcu"], errors="coerce").fillna(0.0)
+                        df["fatura_borcu"] = df[col_map["fatura_borcu"]].apply(parse_currency_val)
                     else:
                         df["fatura_borcu"] = 0.0
 
@@ -271,7 +288,7 @@ if uploaded_files:
                             borc_val = float(row["fatura_borcu"])
                             musteri_val = str(row["musteri_adi"]) if row["musteri_adi"] and str(row["musteri_adi"]).lower() not in ["nan", "none", ""] else "Müşteri Belirtilmedi"
                             odeme_tipi_val = normalize_text(row["odeme_tipi"])
-                            aciklama_val = str(row["aciklama"]) if str(row["aciklama"]).lower() not in ["nan", "none", ""] else "Excel Aktarımı"
+                            aciklama_val = str(row["aciklama"])
 
                             if is_teslim:
                                 teslim_edildi_sayisi += 1
@@ -291,7 +308,7 @@ if uploaded_files:
                             else:
                                 teslim_edilmedi_bekletiliyor_sayisi += 1
 
-                            # F4 Ödeme Listesine Ekleme
+                            # F4 Ödeme Listesine Ekleme (Açıklama boş kalabilir)
                             tum_f4_listesi.append({
                                 "Personel": p,
                                 "Müşteri Adı": musteri_val,
@@ -321,7 +338,7 @@ if uploaded_files:
         st.session_state.veriler = pd.DataFrame(kullanici_ozet_listesi)
     if tum_f4_listesi:
         st.session_state.tahsilatlar = pd.DataFrame(tum_f4_listesi)
-        st.success("✅ Yüklenen tüm Excel dosyaları birleştirildi. F4 Ödeme Listesi ve Personel İstatistikleri güncellendi!")
+        st.success("✅ Yüklenen tüm Excel dosyaları başarıyla işlendi ve F4 Ödeme Listesi güncellendi!")
 
 st.markdown("---")
 
@@ -430,7 +447,7 @@ if f4_add_btn:
             "Personel": p_sec,
             "Müşteri Adı": m_adi_in.strip(),
             "Fatura Borcu (₺)": m_borc_in,
-            "Açıklama": m_ack_in.strip() if m_ack_in.strip() else "Manuel Eklendi"
+            "Açıklama": m_ack_in.strip()
         }
         st.session_state.tahsilatlar = pd.concat([st.session_state.tahsilatlar, pd.DataFrame([yeni_f4])], ignore_index=True)
         st.success(f"✓ {m_adi_in} kaydı {p_sec} için eklendi.")
