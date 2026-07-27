@@ -129,47 +129,57 @@ uploaded_file = st.file_uploader("Kargo Excel Dosyanızı Yükleyin (.xlsx, .xls
 if uploaded_file is not None:
     try:
         file_bytes = uploaded_file.getvalue()
-        dosya_adi = uploaded_file.name.lower()
-
         df_raw = None
 
-        # 1. DENEME: HTML Tablosu Şeklinde Kaydedilmiş .xls/.xlsx Dosyaları
+        # 1. DENEME: Eski Format Excel (.xls - xlrd motoru ile)
         try:
-            dfs = pd.read_html(io.BytesIO(file_bytes))
-            if dfs:
-                df_raw = dfs[0]
+            df_raw = pd.read_excel(io.BytesIO(file_bytes), engine="xlrd")
         except Exception:
             pass
 
-        # 2. DENEME: Gerçek Excel (.xlsx veya .xls)
+        # 2. DENEME: Yeni Format Excel (.xlsx - openpyxl motoru ile)
+        if df_raw is None:
+            try:
+                df_raw = pd.read_excel(io.BytesIO(file_bytes), engine="openpyxl")
+            except Exception:
+                pass
+
+        # 3. DENEME: Motor belirtmeden genel read_excel
         if df_raw is None:
             try:
                 df_raw = pd.read_excel(io.BytesIO(file_bytes))
             except Exception:
-                try:
-                    df_raw = pd.read_excel(io.BytesIO(file_bytes), engine="openpyxl")
-                except Exception:
-                    pass
+                pass
 
-        # 3. DENEME: CSV (Virgül Ayırıcı + Esnek Satır Okuma)
-        if df_raw is None:
-            try:
-                df_raw = pd.read_csv(io.BytesIO(file_bytes), encoding="utf-8", on_bad_lines="skip")
-            except Exception:
-                try:
-                    df_raw = pd.read_csv(io.BytesIO(file_bytes), encoding="latin5", on_bad_lines="skip")
-                except Exception:
-                    pass
-
-        # 4. DENEME: CSV (Noktalı Virgül Ayırıcı)
+        # 4. DENEME: CSV (Noktalı Virgül - Latin5/Türkçe Kodlama)
         if df_raw is None:
             try:
                 df_raw = pd.read_csv(io.BytesIO(file_bytes), sep=";", encoding="latin5", on_bad_lines="skip")
             except Exception:
-                try:
-                    df_raw = pd.read_csv(io.BytesIO(file_bytes), sep=";", encoding="utf-8", on_bad_lines="skip")
-                except Exception:
-                    pass
+                pass
+
+        # 5. DENEME: CSV (Virgül - UTF-8 Kodlama)
+        if df_raw is None:
+            try:
+                df_raw = pd.read_csv(io.BytesIO(file_bytes), encoding="utf-8", on_bad_lines="skip")
+            except Exception:
+                pass
+
+        # 6. DENEME: CSV (Noktalı Virgül - UTF-8 Kodlama)
+        if df_raw is None:
+            try:
+                df_raw = pd.read_csv(io.BytesIO(file_bytes), sep=";", encoding="utf-8", on_bad_lines="skip")
+            except Exception:
+                pass
+
+        # 7. DENEME: Gerçek HTML Tablosu Şeklinde Dışa Aktarılmış .xls Dosyaları
+        if df_raw is None:
+            try:
+                dfs = pd.read_html(io.BytesIO(file_bytes))
+                if dfs:
+                    df_raw = dfs[0]
+            except Exception:
+                pass
 
         if df_raw is None:
             st.error("❌ Dosya biçimi okunamadı. Lütfen dosyanızın geçerli bir Excel veya CSV olduğundan emin olun.")
