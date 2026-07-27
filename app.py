@@ -44,15 +44,29 @@ with col_title:
     st.caption("Mobil Uyumlu Veri Girişi ve Canlı Raporlama Sistemi")
 
 # --- GOOGLE SHEETS ENTEGRASYONU ---
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1bpU7FWdH6xGJ3Vl5DdbunrwXM_Q4yS7AYnL8kdUtBvg/edit?usp=drivesdk"
+SHEET_ID = "1bpU7FWdH6xGJ3Vl5DdbunrwXM_Q4yS7AYnL8kdUtBvg"
 
-@st.cache_resource
-def get_gsheet_client():
-    return gspread.public_spreadsheet(SHEET_URL)
+def gsheet_oku(sheet_name):
+    try:
+        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
+        df = pd.read_csv(url)
+        # Boş sütunları ve satırları temizle
+        df = df.dropna(how='all')
+        return df
+    except Exception as e:
+        return pd.DataFrame()
 
 def verileri_cek():
     try:
-        gc = gspread.public_spreadsheet(SHEET_URL)
+        df_kuryeler = gsheet_oku("Kuryeler")
+        df_veriler = gsheet_oku("Veriler")
+        df_tahsilat = gsheet_oku("FirmaTahsilat")
+        
+        return df_kuryeler, df_veriler, df_tahsilat
+    except Exception as e:
+        st.error(f"Tablo verileri okunurken hata oluştu: {e}")
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
         
         # Kuryeler Sayfası
         try:
