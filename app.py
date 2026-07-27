@@ -2,6 +2,7 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+import io
 
 # Güncel Görsel Bağlantısı
 LOGO_URL = "https://raw.githubusercontent.com/cllsenoll/KT-paneli/refs/heads/main/1000122774.png"
@@ -123,122 +124,148 @@ def ibre_grafik_ciz(teslim, zimmet, baslik_metni, alt_metin=""):
 # ==========================================
 st.subheader("📁 Excel Dosyasından Otomatik Aktarım")
 
-uploaded_file = st.file_uploader("Kargo Excel Dosyanızı Yükleyin (.xlsx veya .csv)", type=["xlsx", "xls", "csv"])
+uploaded_file = st.file_uploader("Kargo Excel Dosyanızı Yükleyin (.xlsx, .xls veya .csv)", type=["xlsx", "xls", "csv"])
 
 if uploaded_file is not None:
     try:
+        file_bytes = uploaded_file.getvalue()
         dosya_adi = uploaded_file.name.lower()
 
-        # Önce uzantıya ve format türüne göre akıllı okuma denemeleri yap
-        if dosya_adi.endswith(".csv"):
+        df_raw = None
+
+        # 1. DENEME: HTML Tablosu Şeklinde Kaydedilmiş .xls/.xlsx Dosyaları
+        try:
+            dfs = pd.read_html(io.BytesIO(file_bytes))
+            if dfs:
+                df_raw = dfs[0]
+        except Exception:
+            pass
+
+        # 2. DENEME: Gerçek Excel (.xlsx veya .xls)
+        if df_raw is None:
             try:
-                df_raw = pd.read_csv(uploaded_file, encoding="utf-8")
+                df_raw = pd.read_excel(io.BytesIO(file_bytes))
             except Exception:
                 try:
-                    df_raw = pd.read_csv(uploaded_file, encoding="latin5")  # Türkçe karakter kümesi denemesi
+                    df_raw = pd.read_excel(io.BytesIO(file_bytes), engine="openpyxl")
                 except Exception:
-                    df_raw = pd.read_excel(uploaded_file)
-        else:
+                    pass
+
+        # 3. DENEME: CSV (Virgül Ayırıcı + Esnek Satır Okuma)
+        if df_raw is None:
             try:
-                df_raw = pd.read_excel(uploaded_file)
+                df_raw = pd.read_csv(io.BytesIO(file_bytes), encoding="utf-8", on_bad_lines="skip")
             except Exception:
                 try:
-                    df_raw = pd.read_csv(uploaded_file, encoding="utf-8")
+                    df_raw = pd.read_csv(io.BytesIO(file_bytes), encoding="latin5", on_bad_lines="skip")
                 except Exception:
-                    df_raw = pd.read_csv(uploaded_file, encoding="latin5")
+                    pass
 
-        # Esnek Sütun Bulma Mantığı
-        col_map = {}
-        for c in df_raw.columns:
-            norm_c = normalize_text(c)
-            if "zimmet personel" in norm_c or "zimmet personel adi" in norm_c or "at zimmet" in norm_c:
-                col_map["zimmet_personel"] = c
-            elif "teslim eden" in norm_c or "teslim eden personel" in norm_c:
-                col_map["teslim_personel"] = c
-            elif "teslimat kanali" in norm_c or "kargo teslimat kanali" in norm_c:
-                col_map["kanal"] = c
-            elif "aciklama" in norm_c or "açıklama" in norm_c:
-                col_map["aciklama"] = c
+        # 4. DENEME: CSV (Noktalı Virgül Ayırıcı)
+        if df_raw is None:
+            try:
+                df_raw = pd.read_csv(io.BytesIO(file_bytes), sep=";", encoding="latin5", on_bad_lines="skip")
+            except Exception:
+                try:
+                    df_raw = pd.read_csv(io.BytesIO(file_bytes), sep=";", encoding="utf-8", on_bad_lines="skip")
+                except Exception:
+                    pass
 
-        gerekli_anahtarlar = ["zimmet_personel", "teslim_personel", "kanal", "aciklama"]
-        eksikler = [k for k in gerekli_anahtarlar if k not in col_map]
-
-        if eksikler:
-            st.error(f"Excel dosyasında gerekli sütunlar tam olarak eşleştirilemedi. Dosyadaki sütunlar: {list(df_raw.columns)}")
+        if df_raw is None:
+            st.error("❌ Dosya biçimi okunamadı. Lütfen dosyanızın geçerli bir Excel veya CSV olduğundan emin olun.")
         else:
-            # Okuma ve Temizleme
-            df = df_raw[[col_map["zimmet_personel"], col_map["teslim_personel"], col_map["kanal"], col_map["aciklama"]]].copy()
-            df.columns = ["zimmet_personel", "teslim_personel", "kanal", "aciklama"]
+            # Esnek Sütun Bulma Mantığı
+            col_map = {}
+            for c in df_raw.columns:
+                norm_c = normalize_text(c)
+                if "zimmet personel" in norm_c or "zimmet personel adi" in norm_c or "at zimmet" in norm_c:
+                    col_map["zimmet_personel"] = c
+                elif "teslim eden" in norm_c or "teslim eden personel" in norm_c:
+                    col_map["teslim_personel"] = c
+                elif "teslimat kanali" in norm_c or "kargo teslimat kanali" in norm_c:
+                    col_map["kanal"] = c
+                elif "aciklama" in norm_c or "açıklama" in norm_c:
+                    col_map["aciklama"] = c
 
-            for col in df.columns:
-                df[col] = df[col].astype(str).str.strip()
+            gerekli_anahtarlar = ["zimmet_personel", "teslim_personel", "kanal", "aciklama"]
+            eksikler = [k for k in gerekli_anahtarlar if k not in col_map]
 
-            kullanici_ozet = []
-            personeller = df["zimmet_personel"].unique()
+            if eksikler:
+                st.error(f"Excel dosyasında gerekli sütunlar tam olarak eşleştirilemedi. Dosyadaki sütunlar: {list(df_raw.columns)}")
+            else:
+                # Okuma ve Temizleme
+                df = df_raw[[col_map["zimmet_personel"], col_map["teslim_personel"], col_map["kanal"], col_map["aciklama"]]].copy()
+                df.columns = ["zimmet_personel", "teslim_personel", "kanal", "aciklama"]
 
-            for p in personeller:
-                if p == "nan" or not p or p == "None":
-                    continue
-                
-                # Personelin zimmetindeki tüm satırlar
-                p_df = df[df["zimmet_personel"] == p]
-                zimmet_sayisi = len(p_df)
+                for col in df.columns:
+                    df[col] = df[col].astype(str).str.strip()
 
-                # Teslim edilenler (Zimmet personeli == Teslim eden personel)
-                teslim_df = p_df[p_df["zimmet_personel"] == p_df["teslim_personel"]]
-                teslim_sayisi = len(teslim_df)
-                devir_sayisi = zimmet_sayisi - teslim_sayisi
+                kullanici_ozet = []
+                personeller = df["zimmet_personel"].unique()
 
-                # Kanal Hesaplamaları
-                sms_sayisi = 0
-                imza_sayisi = 0
-                ks_sayisi = 0
+                for p in personeller:
+                    if p == "nan" or not p or p == "None":
+                        continue
+                    
+                    # Personelin zimmetindeki tüm satırlar
+                    p_df = df[df["zimmet_personel"] == p]
+                    zimmet_sayisi = len(p_df)
 
-                for _, row in teslim_df.iterrows():
-                    kanal_val = str(row["kanal"]).upper()
-                    aciklama_val = str(row["aciklama"]).upper()
+                    # Teslim edilenler (Zimmet personeli == Teslim eden personel)
+                    teslim_df = p_df[p_df["zimmet_personel"] == p_df["teslim_personel"]]
+                    teslim_sayisi = len(teslim_df)
+                    devir_sayisi = zimmet_sayisi - teslim_sayisi
 
-                    if "SMS" in kanal_val:
-                        sms_sayisi += 1
-                    elif "İMZA" in kanal_val or "IMZA" in kanal_val:
-                        imza_sayisi += 1
-                    elif "KAPIYA BIRAKILDI" in kanal_val:
-                        ks_sayisi += 1
-                    elif (kanal_val in ["NAN", "", "NONE"]) and ("POS ENTEGRASYON" in aciklama_val):
-                        ks_sayisi += 1
-                    else:
-                        ks_sayisi += 1
+                    # Kanal Hesaplamaları
+                    sms_sayisi = 0
+                    imza_sayisi = 0
+                    ks_sayisi = 0
 
-                # Mevcut manuel girilmiş nakit/kart verisini koru
-                mevcut_veriler = st.session_state.veriler
-                nakit_val = 0.0
-                kart_val = 0.0
-                if not mevcut_veriler.empty and p in mevcut_veriler["personel"].values:
-                    p_row = mevcut_veriler[mevcut_veriler["personel"] == p].iloc[0]
-                    nakit_val = float(p_row.get("nakit", 0.0))
-                    kart_val = float(p_row.get("kart", 0.0))
+                    for _, row in teslim_df.iterrows():
+                        kanal_val = str(row["kanal"]).upper()
+                        aciklama_val = str(row["aciklama"]).upper()
 
-                kullanici_ozet.append({
-                    "personel": p,
-                    "zimmet": zimmet_sayisi,
-                    "teslim": teslim_sayisi,
-                    "devir": devir_sayisi,
-                    "sms": sms_sayisi,
-                    "imza": imza_sayisi,
-                    "ks": ks_sayisi,
-                    "nakit": nakit_val,
-                    "kart": kart_val
-                })
+                        if "SMS" in kanal_val:
+                            sms_sayisi += 1
+                        elif "İMZA" in kanal_val or "IMZA" in kanal_val:
+                            imza_sayisi += 1
+                        elif "KAPIYA BIRAKILDI" in kanal_val:
+                            ks_sayisi += 1
+                        elif (kanal_val in ["NAN", "", "NONE"]) and ("POS ENTEGRASYON" in aciklama_val):
+                            ks_sayisi += 1
+                        else:
+                            ks_sayisi += 1
 
-            new_df = pd.DataFrame(kullanici_ozet)
+                    # Mevcut manuel girilmiş nakit/kart verisini koru
+                    mevcut_veriler = st.session_state.veriler
+                    nakit_val = 0.0
+                    kart_val = 0.0
+                    if not mevcut_veriler.empty and p in mevcut_veriler["personel"].values:
+                        p_row = mevcut_veriler[mevcut_veriler["personel"] == p].iloc[0]
+                        nakit_val = float(p_row.get("nakit", 0.0))
+                        kart_val = float(p_row.get("kart", 0.0))
 
-            # Oturum verisini güncelle
-            st.session_state.veriler = new_df
-            for p in personeller:
-                if p and p not in ["nan", "None"] and p not in st.session_state.personeller:
-                    st.session_state.personeller.append(p)
+                    kullanici_ozet.append({
+                        "personel": p,
+                        "zimmet": zimmet_sayisi,
+                        "teslim": teslim_sayisi,
+                        "devir": devir_sayisi,
+                        "sms": sms_sayisi,
+                        "imza": imza_sayisi,
+                        "ks": ks_sayisi,
+                        "nakit": nakit_val,
+                        "kart": kart_val
+                    })
 
-            st.success("✅ Dosya başarıyla okundu! Tüm veriler ve grafikler güncellendi.")
+                new_df = pd.DataFrame(kullanici_ozet)
+
+                # Oturum verisini güncelle
+                st.session_state.veriler = new_df
+                for p in personeller:
+                    if p and p not in ["nan", "None"] and p not in st.session_state.personeller:
+                        st.session_state.personeller.append(p)
+
+                st.success("✅ Dosya başarıyla okundu! Tüm veriler ve grafikler güncellendi.")
 
     except Exception as e:
         st.error(f"Dosya işlenirken hata oluştu: {e}")
