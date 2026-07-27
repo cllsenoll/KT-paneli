@@ -8,3 +8,10 @@ pandas
 matplotlib
 numpy
 openpyxl
+streamlit
+pandas
+matplotlib
+numpy
+openpyxl
+lxml
+html5lib
