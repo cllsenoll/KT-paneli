@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import io
+import re
 
 # Güncel Görsel Bağlantısı
 LOGO_URL = "https://raw.githubusercontent.com/cllsenoll/KT-paneli/refs/heads/main/1000122774.png"
@@ -44,12 +45,14 @@ def parse_currency_val(val):
     if pd.isna(val) or val is None:
         return 0.0
     
-    # Metne dönüştür ve simgeleri temizle
-    val_str = str(val).strip().replace('₺', '').replace('TL', '').replace('tl', '').strip()
-    if not val_str or val_str.lower() in ['nan', 'none', 'null', '']:
+    # Metne çevir, simgeleri, harfleri ve gizli boşlukları (\xa0) temizle
+    val_str = str(val).replace('\xa0', ' ').strip()
+    val_str = re.sub(r'[^\d.,\-]', '', val_str)
+    
+    if not val_str:
         return 0.0
     
-    # 1.234,56 -> 1234.56 veya 1234,56 -> 1234.56 dönüşümü
+    # Binlik ve kuruş ayracı düzeltmesi
     if ',' in val_str and '.' in val_str:
         val_str = val_str.replace('.', '').replace(',', '.')
     elif ',' in val_str:
@@ -59,6 +62,24 @@ def parse_currency_val(val):
         return float(val_str)
     except ValueError:
         return 0.0
+
+# --- Başlık Satırını Otomatik Bulma ---
+def fix_excel_header(df_raw):
+    # Eğer varsayılan okumada mantıklı bir sütun bulunduysa doğrudan dön
+    for c in df_raw.columns:
+        norm_c = normalize_text(c)
+        if any(k in norm_c for k in ["personel", "kurye", "zimmet", "borc", "tutar", "musteri", "alici", "firma"]):
+            return df_raw
+    
+    # Başlık üstteki satırlara kaymışsa ilk 10 satırı tara
+    for idx in range(min(10, len(df_raw))):
+        row_vals = [normalize_text(v) for v in df_raw.iloc[idx].values]
+        if any(any(k in v for k in ["personel", "kurye", "zimmet", "borc", "tutar", "musteri", "alici"]) for v in row_vals):
+            new_df = df_raw.iloc[idx+1:].copy()
+            new_df.columns = df_raw.iloc[idx].values
+            return new_df.reset_index(drop=True)
+            
+    return df_raw
 
 # --- OTURUM / DAHİLİ HAFIZA BAŞLATMA ---
 if "personeller" not in st.session_state:
@@ -113,7 +134,7 @@ with st.sidebar:
             st.success(f"{silinecek_personel} silindi!")
             st.rerun()
 
-# İbre Grafiği Oluşturma Fonksiyonu
+# İbre Grafiği
 def ibre_grafik_ciz(teslim_edildi, bekletiliyor, zimmet, baslik_metni, alt_metin=""):
     basari_orani = (teslim_edildi / zimmet * 100) if zimmet > 0 else 0
 
@@ -156,7 +177,6 @@ def generate_pdf_bytes(df_input, personel_adi=""):
     table.set_fontsize(10)
     table.scale(1, 1.5)
     
-    # Header Stil
     for i in range(len(df_input.columns)):
         cell = table[(0, i)]
         cell.set_facecolor('#2563EB')
@@ -169,7 +189,7 @@ def generate_pdf_bytes(df_input, personel_adi=""):
     return buf.getvalue()
 
 # ==========================================
-# 📁 ÇOKLU EXCEL DOSYASI İLE OTOMATİK VERİ İŞLEME
+# 📁 EXCEL YÜKLEME VE OTOMATİK VERİ İŞLEME
 # ==========================================
 st.subheader("📁 Excel / CSV Dosyası Yükleme (Çoklu Dosya Destekli)")
 
@@ -214,6 +234,9 @@ if uploaded_files:
                         break
 
             if df_raw is not None and not df_raw.empty:
+                # Başlık satırı kaymasını düzelt
+                df_raw = fix_excel_header(df_raw)
+
                 col_map = {}
                 for c in df_raw.columns:
                     norm_c = normalize_text(c)
@@ -238,9 +261,10 @@ if uploaded_files:
                     elif any(k in norm_c for k in ["musteri adi", "musteri", "alici", "alici adi", "firma", "unvan"]):
                         col_map["musteri_adi"] = c
 
-                    # GENİŞLETİLMİŞ FATURA BORCU / TUTAR / BORÇ TESPİTİ (₺ bağımsız)
-                    elif any(k in norm_c for k in ["fatura borcu", "borcu", "borc", "tutar", "ucret", "fiyat", "tahsilat tutari", "bedel", "alacak"]):
-                        col_map["fatura_borcu"] = c
+                    # KAPSAMLI FATURA BORCU / TUTAR / KAPIDA ÖDEME TESPİTİ
+                    elif any(k in norm_c for k in ["fatura borcu", "borcu", "borc", "tutar", "ucret", "fiyat", "tahsilat", "bedel", "alacak", "kapida odeme", "k.o", "matrah"]):
+                        if "fatura_borcu" not in col_map or "borc" in norm_c or "fatura" in norm_c:
+                            col_map["fatura_borcu"] = c
 
                     # Ödeme Tipi
                     elif any(k in norm_c for k in ["odeme tipi", "odeme türü", "tahsilat tipi", "odeme karsi"]):
@@ -255,14 +279,14 @@ if uploaded_files:
                     df["musteri_adi"] = df[col_map["musteri_adi"]].astype(str).str.strip() if "musteri_adi" in col_map else ""
                     df["odeme_tipi"] = df[col_map["odeme_tipi"]].astype(str).str.strip() if "odeme_tipi" in col_map else ""
 
-                    # Açıklama Kontrolü (Boş veya nan ise "")
+                    # Açıklama Temizleme
                     if "aciklama" in col_map:
                         df["aciklama"] = df[col_map["aciklama"]].astype(str).str.strip()
                         df["aciklama"] = df["aciklama"].apply(lambda x: "" if str(x).lower() in ["nan", "none", "null"] else str(x))
                     else:
                         df["aciklama"] = ""
 
-                    # Fatura Borcu / Tutar
+                    # Fatura Borcu / Tutar Dönüştürme
                     if "fatura_borcu" in col_map:
                         df["fatura_borcu"] = df[col_map["fatura_borcu"]].apply(parse_currency_val)
                     else:
@@ -310,7 +334,6 @@ if uploaded_files:
                             else:
                                 teslim_edilmedi_bekletiliyor_sayisi += 1
 
-                            # F4 Ödeme Listesine Kayıt
                             tum_f4_listesi.append({
                                 "Personel": p,
                                 "Müşteri Adı": musteri_val,
