@@ -1,3 +1,8 @@
 streamlit
 matplotlib
 pandas
+streamlit
+pandas
+matplotlib
+numpy
+st-gsheets-connection
