@@ -2,7 +2,6 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
-import requests
 
 # Güncel Görsel Bağlantısı
 LOGO_URL = "https://raw.githubusercontent.com/cllsenoll/KT-paneli/refs/heads/main/1000122774.png"
@@ -33,6 +32,26 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# --- OTURUM / DAHİLİ HAFIZA (SESSION STATE) BAŞLATMA ---
+if "kuryeler" not in st.session_state:
+    st.session_state.kuryeler = [
+        "Ahmet Berkan Öksüz",
+        "Alattin Cebeci",
+        "Hasan Sağlam",
+        "Mehmet Kaymaz",
+        "Suat Arı"
+    ]
+
+if "veriler" not in st.session_state:
+    st.session_state.veriler = pd.DataFrame(columns=[
+        "kurye", "zimmet", "teslim", "devir", "sms", "imza", "ks", "nakit", "kart"
+    ])
+
+if "tahsilatlar" not in st.session_state:
+    st.session_state.tahsilatlar = pd.DataFrame(columns=[
+        "Kurye", "Firma Adı", "Tutar (₺)", "Açıklama"
+    ])
+
 # Üst Başlık ve Logo Alanı
 col_logo, col_title = st.columns([1, 3])
 
@@ -43,60 +62,14 @@ with col_title:
     st.title("Kurye Performans & Tahsilat Paneli")
     st.caption("Mobil Uyumlu Veri Girişi ve Canlı Raporlama Sistemi")
 
-# --- GOOGLE SHEETS VE APPS SCRIPT ENTEGRASYONU ---
-SHEET_ID = "1bpU7FWdH6xGJ3Vl5DdbunrwXM_Q4yS7AYnL8kdUtBvg"
-# BURAYA 1. ADIMDA KOPYALADIĞIN WEB APP URL'SİNİ YAPIŞTIR:
-SCRIPT_URL = "https://script.google.com/macros/s/BURAYA_KENDI_SCRIPT_URL_ADRESINI_YAPISTIR/exec"
-
-def gsheet_oku(sheet_name):
-    try:
-        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
-        df = pd.read_csv(url)
-        df = df.dropna(how='all')
-        return df
-    except Exception as e:
-        return pd.DataFrame()
-
-def gsheet_yaz(sheet_name, data):
-    try:
-        payload = {"sheet": sheet_name, "data": data}
-        res = requests.post(SCRIPT_URL, json=payload)
-        return res.status_code == 200
-    except Exception as e:
-        st.error(f"Veri yazma hatası: {e}")
-        return False
-
-def verileri_cek():
-    df_kuryeler = gsheet_oku("Kuryeler")
-    df_veriler = gsheet_oku("Veriler")
-    df_tahsilat = gsheet_oku("FirmaTahsilat")
-    return df_kuryeler, df_veriler, df_tahsilat
-
-df_kuryeler, df_veriler, df_tahsilat = verileri_cek()
-
-# Varsayılan Kuryeler
-VARSAYILAN_KURYELER = [
-    "Ahmet Berkan Öksüz",
-    "Alattin Cebeci",
-    "Hasan Sağlam",
-    "Mehmet Kaymaz",
-    "Suat Arı"
-]
-
-if df_kuryeler.empty or "Kurye" not in df_kuryeler.columns:
-    kurye_listesi = VARSAYILAN_KURYELER
-else:
-    kurye_listesi = [k for k in df_kuryeler["Kurye"].tolist() if str(k).strip() != ""]
-
 # --- SIDEBAR: KURYE YÖNETİMİ ---
 with st.sidebar:
     st.header("⚙️ Kurye Yönetimi")
     yeni_kurye = st.text_input("Yeni Kurye Adı Soyadı:")
     if st.button("➕ Kurye Ekle"):
         if yeni_kurye.strip():
-            if yeni_kurye.strip() not in kurye_listesi:
-                yeni_liste = kurye_listesi + [yeni_kurye.strip()]
-                gsheet_yaz("Kuryeler", yeni_liste)
+            if yeni_kurye.strip() not in st.session_state.kuryeler:
+                st.session_state.kuryeler.append(yeni_kurye.strip())
                 st.success(f"{yeni_kurye.strip()} eklendi!")
                 st.rerun()
             else:
@@ -105,11 +78,10 @@ with st.sidebar:
             st.error("Lütfen geçerli bir isim girin.")
 
     st.markdown("---")
-    if kurye_listesi:
-        silinecek_kurye = st.selectbox("Silinecek Kurye Seçin:", kurye_listesi)
+    if st.session_state.kuryeler:
+        silinecek_kurye = st.selectbox("Silinecek Kurye Seçin:", st.session_state.kuryeler)
         if st.button("🗑️ Seçili Kuryeyi Sil"):
-            kurye_listesi.remove(silinecek_kurye)
-            gsheet_yaz("Kuryeler", kurye_listesi)
+            st.session_state.kuryeler.remove(silinecek_kurye)
             st.success(f"{silinecek_kurye} silindi!")
             st.rerun()
 
@@ -140,14 +112,18 @@ def ibre_grafik_ciz(teslim, zimmet, baslik_metni, alt_metin=""):
 
     return fig
 
+df_veriler = st.session_state.veriler
+df_tahsilat = st.session_state.tahsilatlar
+kurye_listesi = st.session_state.kuryeler
+
 # ==========================================
 # 1. ŞUBE TESLİM ORANI
 # ==========================================
 st.markdown("### 🎯 Şube Teslim oranı")
 
-toplam_zimmet = int(pd.to_numeric(df_veriler["zimmet"], errors='coerce').sum()) if not df_veriler.empty and "zimmet" in df_veriler.columns else 0
-toplam_teslim = int(pd.to_numeric(df_veriler["teslim"], errors='coerce').sum()) if not df_veriler.empty and "teslim" in df_veriler.columns else 0
-toplam_devir = int(pd.to_numeric(df_veriler["devir"], errors='coerce').sum()) if not df_veriler.empty and "devir" in df_veriler.columns else 0
+toplam_zimmet = int(df_veriler["zimmet"].sum()) if not df_veriler.empty else 0
+toplam_teslim = int(df_veriler["teslim"].sum()) if not df_veriler.empty else 0
+toplam_devir = int(df_veriler["devir"].sum()) if not df_veriler.empty else 0
 
 fig_sube = ibre_grafik_ciz(toplam_teslim, toplam_zimmet, "Şube Teslim oranı", "Şube Genel Performansı")
 st.pyplot(fig_sube)
@@ -159,8 +135,8 @@ st.markdown("---")
 # ==========================================
 st.subheader("📊 Genel Durum ve Performans")
 
-toplam_nakit = float(pd.to_numeric(df_veriler["nakit"], errors='coerce').sum()) if not df_veriler.empty and "nakit" in df_veriler.columns else 0.0
-toplam_kart = float(pd.to_numeric(df_veriler["kart"], errors='coerce').sum()) if not df_veriler.empty and "kart" in df_veriler.columns else 0.0
+toplam_nakit = float(df_veriler["nakit"].sum()) if not df_veriler.empty else 0.0
+toplam_kart = float(df_veriler["kart"].sum()) if not df_veriler.empty else 0.0
 toplam_tahsilat = toplam_nakit + toplam_kart
 
 kpi1, kpi2, kpi3 = st.columns(3)
@@ -175,7 +151,7 @@ st.markdown("---")
 # ==========================================
 st.markdown("### 📦 Kurye Bazlı Teslimat vs Devir")
 
-if not df_veriler.empty and "kurye" in df_veriler.columns:
+if not df_veriler.empty:
     fig_bar, ax_bar = plt.subplots(figsize=(6, 4))
     fig_bar.patch.set_facecolor('#0E1117')
     ax_bar.set_facecolor('#161B22')
@@ -184,11 +160,8 @@ if not df_veriler.empty and "kurye" in df_veriler.columns:
     y = range(len(kurye_names))
     height = 0.35
 
-    teslim_vals = pd.to_numeric(df_veriler["teslim"], errors='coerce').fillna(0).tolist()
-    devir_vals = pd.to_numeric(df_veriler["devir"], errors='coerce').fillna(0).tolist()
-
-    rects1 = ax_bar.barh([i - height/2 for i in y], teslim_vals, height, label='Teslim', color='#10B981')
-    rects2 = ax_bar.barh([i + height/2 for i in y], devir_vals, height, label='Devir', color='#EF4444')
+    rects1 = ax_bar.barh([i - height/2 for i in y], df_veriler["teslim"], height, label='Teslim', color='#10B981')
+    rects2 = ax_bar.barh([i + height/2 for i in y], df_veriler["devir"], height, label='Devir', color='#EF4444')
 
     ax_bar.set_yticks(y)
     ax_bar.set_yticklabels(kurye_names, color='white', fontsize=10)
@@ -203,6 +176,8 @@ if not df_veriler.empty and "kurye" in df_veriler.columns:
 
     plt.tight_layout()
     st.pyplot(fig_bar)
+else:
+    st.info("Kurye bazlı grafik için henüz veri girilmedi.")
 
 st.markdown("---")
 
@@ -216,8 +191,8 @@ if kurye_listesi:
 
     if not df_veriler.empty and kurye_ibre_secim in df_veriler["kurye"].values:
         row = df_veriler[df_veriler["kurye"] == kurye_ibre_secim].iloc[0]
-        k_zimmet = int(pd.to_numeric(row.get("zimmet", 0), errors='coerce'))
-        k_teslim = int(pd.to_numeric(row.get("teslim", 0), errors='coerce'))
+        k_zimmet = int(row["zimmet"])
+        k_teslim = int(row["teslim"])
     else:
         k_zimmet, k_teslim = 0, 0
 
@@ -232,26 +207,26 @@ st.markdown("---")
 st.subheader("📝 Günlük Veri Girişi")
 secilen_kurye = st.selectbox("Kurye Seçin:", kurye_listesi)
 
-mevcut_row = df_veriler[df_veriler["kurye"] == secilen_kurye] if not df_veriler.empty and "kurye" in df_veriler.columns else pd.DataFrame()
+mevcut_row = df_veriler[df_veriler["kurye"] == secilen_kurye] if not df_veriler.empty else pd.DataFrame()
 
 with st.form("kurye_formu"):
     col1, col2 = st.columns(2)
     with col1:
-        zimmet = st.number_input("Zimmetli Kargo:", min_value=0, value=int(pd.to_numeric(mevcut_row["zimmet"].values[0], errors='coerce')) if not mevcut_row.empty else 0)
-        teslim = st.number_input("Teslim Edilen:", min_value=0, value=int(pd.to_numeric(mevcut_row["teslim"].values[0], errors='coerce')) if not mevcut_row.empty else 0)
-        devir = st.number_input("Devir Edilen:", min_value=0, value=int(pd.to_numeric(mevcut_row["devir"].values[0], errors='coerce')) if not mevcut_row.empty else 0)
+        zimmet = st.number_input("Zimmetli Kargo:", min_value=0, value=int(mevcut_row["zimmet"].values[0]) if not mevcut_row.empty else 0)
+        teslim = st.number_input("Teslim Edilen:", min_value=0, value=int(mevcut_row["teslim"].values[0]) if not mevcut_row.empty else 0)
+        devir = st.number_input("Devir Edilen:", min_value=0, value=int(mevcut_row["devir"].values[0]) if not mevcut_row.empty else 0)
     with col2:
-        sms = st.number_input("SMS ile Teslim:", min_value=0, value=int(pd.to_numeric(mevcut_row["sms"].values[0], errors='coerce')) if not mevcut_row.empty else 0)
-        imza = st.number_input("İmza ile Teslim:", min_value=0, value=int(pd.to_numeric(mevcut_row["imza"].values[0], errors='coerce')) if not mevcut_row.empty else 0)
-        ks = st.number_input("KS ile Teslim:", min_value=0, value=int(pd.to_numeric(mevcut_row["ks"].values[0], errors='coerce')) if not mevcut_row.empty else 0)
+        sms = st.number_input("SMS ile Teslim:", min_value=0, value=int(mevcut_row["sms"].values[0]) if not mevcut_row.empty else 0)
+        imza = st.number_input("İmza ile Teslim:", min_value=0, value=int(mevcut_row["imza"].values[0]) if not mevcut_row.empty else 0)
+        ks = st.number_input("KS ile Teslim:", min_value=0, value=int(mevcut_row["ks"].values[0]) if not mevcut_row.empty else 0)
 
     st.markdown("---")
     st.markdown("**💳 Genel Tahsilat Tutarları (TL)**")
     col3, col4 = st.columns(2)
     with col3:
-        nakit = st.number_input("Nakit Tahsilat (₺):", min_value=0.0, value=float(pd.to_numeric(mevcut_row["nakit"].values[0], errors='coerce')) if not mevcut_row.empty else 0.0)
+        nakit = st.number_input("Nakit Tahsilat (₺):", min_value=0.0, value=float(mevcut_row["nakit"].values[0]) if not mevcut_row.empty else 0.0)
     with col4:
-        kart = st.number_input("Kredi Kartı / POS (₺):", min_value=0.0, value=float(pd.to_numeric(mevcut_row["kart"].values[0], errors='coerce')) if not mevcut_row.empty else 0.0)
+        kart = st.number_input("Kredi Kartı / POS (₺):", min_value=0.0, value=float(mevcut_row["kart"].values[0]) if not mevcut_row.empty else 0.0)
 
     kaydet_btn = st.form_submit_button("💾 Kurye Verisini Kaydet")
 
@@ -267,10 +242,16 @@ if kaydet_btn:
         "nakit": nakit,
         "kart": kart
     }
-    
-    if gsheet_yaz("Veriler", yeni_veri):
-        st.success(f"✓ {secilen_kurye} verileri Google Sheets'e başarıyla kaydedildi!")
-        st.rerun()
+    yeni_df = pd.DataFrame([yeni_veri])
+
+    if not st.session_state.veriler.empty and "kurye" in st.session_state.veriler.columns:
+        st.session_state.veriler = st.session_state.veriler[st.session_state.veriler["kurye"] != secilen_kurye]
+        st.session_state.veriler = pd.concat([st.session_state.veriler, yeni_df], ignore_index=True)
+    else:
+        st.session_state.veriler = yeni_df
+
+    st.success(f"✓ {secilen_kurye} verileri kaydedildi!")
+    st.rerun()
 
 st.markdown("---")
 
@@ -300,9 +281,11 @@ if firma_kaydet_btn:
             "Tutar (₺)": firma_tutar,
             "Açıklama": firma_aciklama.strip()
         }
-        if gsheet_yaz("FirmaTahsilat", yeni_tahsilat):
-            st.success(f"✓ {firma_adi} için {firma_tutar:,.2f} ₺ tahsilat eklendi.")
-            st.rerun()
+        yeni_tahsilat_df = pd.DataFrame([yeni_tahsilat])
+        
+        st.session_state.tahsilatlar = pd.concat([st.session_state.tahsilatlar, yeni_tahsilat_df], ignore_index=True)
+        st.success(f"✓ {firma_adi} için {firma_tutar:,.2f} ₺ tahsilat eklendi.")
+        st.rerun()
     else:
         st.error("Lütfen Firma Adı ve 0'dan büyük Tutar giriniz.")
 
