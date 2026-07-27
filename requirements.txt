@@ -2,16 +2,7 @@ streamlit
 pandas
 matplotlib
 numpy
-gspread
-streamlit
-pandas
-matplotlib
-numpy
 openpyxl
-streamlit
-pandas
-matplotlib
-numpy
-openpyxl
+xlrd==2.0.1
 lxml
 html5lib
