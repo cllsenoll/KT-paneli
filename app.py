@@ -39,12 +39,11 @@ def normalize_text(text):
     text = text.replace('ı', 'i').replace('ğ', 'g').replace('ü', 'u').replace('ş', 's').replace('ö', 'o').replace('ç', 'c')
     return text
 
-# --- DÜZELTİLEN FATURA BORCU / TUTAR DÖNÜŞTÜRÜCÜ ---
+# --- FATURA BORCU / TUTAR DÖNÜŞTÜRÜCÜ ---
 def parse_currency_val(val):
     if pd.isna(val) or val is None:
         return 0.0
     
-    # Doğrudan sayıysa çevir
     if isinstance(val, (int, float)):
         return float(val)
         
@@ -52,10 +51,8 @@ def parse_currency_val(val):
     if not val_str or val_str.lower() in ['nan', 'none', 'null', '']:
         return 0.0
 
-    # Para birimi sembollerini ve metinleri temizle
     val_str = val_str.replace('₺', '').replace('TL', '').replace('tl', '').strip()
 
-    # Binlik ve kuruş ayracı düzeltmesi (Türkçe Format: 1.250,50 -> 1250.50)
     if ',' in val_str and '.' in val_str:
         val_str = val_str.replace('.', '').replace(',', '.')
     elif ',' in val_str:
@@ -66,7 +63,7 @@ def parse_currency_val(val):
     except ValueError:
         return 0.0
 
-# --- OTURUM / DAHİLİ HAFIZA BAŞLATMA ---
+# --- OTURUM BAŞLATMA ---
 if "personeller" not in st.session_state:
     st.session_state.personeller = [
         "Ahmet Berkan Öksüz",
@@ -86,7 +83,7 @@ if "tahsilatlar" not in st.session_state:
         "Personel", "Müşteri Adı", "Fatura Borcu (₺)", "Açıklama"
     ])
 
-# Üst Başlık ve Logo Alanı
+# Üst Başlık ve Logo
 col_logo, col_title = st.columns([1, 3])
 
 with col_logo:
@@ -119,7 +116,7 @@ with st.sidebar:
             st.success(f"{silinecek_personel} silindi!")
             st.rerun()
 
-# İbre Grafiği Oluşturma Fonksiyonu
+# İbre Grafiği
 def ibre_grafik_ciz(teslim_edildi, bekletiliyor, zimmet, baslik_metni, alt_metin=""):
     basari_orani = (teslim_edildi / zimmet * 100) if zimmet > 0 else 0
 
@@ -146,7 +143,7 @@ def ibre_grafik_ciz(teslim_edildi, bekletiliyor, zimmet, baslik_metni, alt_metin
 
     return fig
 
-# PDF Oluşturma Fonksiyonu
+# PDF Oluşturma
 def generate_pdf_bytes(df_input, personel_adi=""):
     fig, ax = plt.subplots(figsize=(8.5, max(len(df_input) * 0.4 + 2, 3)))
     ax.axis('tight')
@@ -218,6 +215,36 @@ if uploaded_files:
 
             if df_raw is not None and not df_raw.empty:
                 col_map = {}
+
+                # 1. Aşama: FATURA BORCU SÜTUNUNU İRSALİYE'DEN AYIRARAK TESPİT ETME
+                fatura_col = None
+                for c in df_raw.columns:
+                    norm_c = normalize_text(c)
+                    # İrsaliye sütunlarını doğrudan ele
+                    if "irsaliye" in norm_c:
+                        continue
+                    
+                    # Tam eşleşme önceliği
+                    if norm_c in ["fatura borcu", "fatura borcun", "faturaborcu", "fatura borcu (tl)", "fatura borcu (₺)"]:
+                        fatura_col = c
+                        break
+                    elif "fatura" in norm_c and "borc" in norm_c:
+                        fatura_col = c
+
+                # Eğer "fatura borcu" bulunamazsa genel fatura/tutar sütunlarına bak
+                if not fatura_col:
+                    for c in df_raw.columns:
+                        norm_c = normalize_text(c)
+                        if "irsaliye" in norm_c:
+                            continue
+                        if any(k in norm_c for k in ["fatura", "kapida odeme", "tahsilat tutari"]):
+                            fatura_col = c
+                            break
+
+                if fatura_col:
+                    col_map["fatura_borcu"] = fatura_col
+
+                # 2. Aşama: DİĞER SÜTUNLARI TESPİT ETME
                 for c in df_raw.columns:
                     norm_c = normalize_text(c)
                     
@@ -241,10 +268,6 @@ if uploaded_files:
                     elif any(k in norm_c for k in ["musteri adi", "musteri", "alici", "alici adi", "firma", "unvan"]):
                         col_map["musteri_adi"] = c
 
-                    # FATURA BORCU SÜTUNU YAKALAMA (Kesin Tespiti)
-                    elif any(k in norm_c for k in ["fatura borcu", "faturaborcu", "borcu", "borc", "tutar", "ucret", "bedel"]):
-                        col_map["fatura_borcu"] = c
-
                     # Ödeme Tipi
                     elif any(k in norm_c for k in ["odeme tipi", "odeme türü", "tahsilat tipi", "odeme karsi"]):
                         col_map["odeme_tipi"] = c
@@ -258,14 +281,12 @@ if uploaded_files:
                     df["musteri_adi"] = df[col_map["musteri_adi"]].astype(str).str.strip() if "musteri_adi" in col_map else ""
                     df["odeme_tipi"] = df[col_map["odeme_tipi"]].astype(str).str.strip() if "odeme_tipi" in col_map else ""
 
-                    # Açıklama (Varsayılan boş metin)
                     if "aciklama" in col_map:
                         df["aciklama"] = df[col_map["aciklama"]].astype(str).str.strip()
                         df["aciklama"] = df["aciklama"].apply(lambda x: "" if str(x).lower() in ["nan", "none", "null"] else str(x))
                     else:
                         df["aciklama"] = ""
 
-                    # Fatura Borcu Dönüştürme
                     if "fatura_borcu" in col_map:
                         df["fatura_borcu"] = df[col_map["fatura_borcu"]].apply(parse_currency_val)
                     else:
@@ -313,7 +334,6 @@ if uploaded_files:
                             else:
                                 teslim_edilmedi_bekletiliyor_sayisi += 1
 
-                            # F4 Ödeme Listesine Doğrudan Ekleme
                             tum_f4_listesi.append({
                                 "Personel": p,
                                 "Müşteri Adı": musteri_val,
@@ -402,7 +422,6 @@ if personel_listesi:
             toplam_f4_borc = df_f4_goster["Fatura Borcu (₺)"].sum()
             st.info(f"💰 **{f4_personel_secim} Toplam Fatura Borcu:** {toplam_f4_borc:,.2f} ₺")
 
-            # İNDİRME BUTONLARI
             col_pdf, col_excel = st.columns(2)
             
             with col_pdf:
