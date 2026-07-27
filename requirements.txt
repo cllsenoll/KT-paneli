@@ -1,12 +1,4 @@
 streamlit
-matplotlib
-pandas
-streamlit
-pandas
-matplotlib
-numpy
-st-gsheets-connection
-streamlit
 pandas
 matplotlib
 numpy
