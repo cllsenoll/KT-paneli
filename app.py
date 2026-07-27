@@ -2,13 +2,14 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+import unicodedata
 
 # Güncel Görsel Bağlantısı
 LOGO_URL = "https://raw.githubusercontent.com/cllsenoll/KT-paneli/refs/heads/main/1000122774.png"
 
 # Sayfa Yapılandırması
 st.set_page_config(
-    page_title="Kurye Performans Paneli", 
+    page_title="Personel Performans Paneli", 
     page_icon=LOGO_URL, 
     layout="centered"
 )
@@ -32,9 +33,15 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# --- Metin Normalleştirme (Sütun Adı Eşleştirme İçin) ---
+def normalize_text(text):
+    text = str(text).strip().lower()
+    text = text.replace('ı', 'i').replace('ğ', 'g').replace('ü', 'u').replace('ş', 's').replace('ö', 'o').replace('ç', 'c')
+    return text
+
 # --- OTURUM / DAHİLİ HAFIZA (SESSION STATE) BAŞLATMA ---
-if "kuryeler" not in st.session_state:
-    st.session_state.kuryeler = [
+if "personeller" not in st.session_state:
+    st.session_state.personeller = [
         "Ahmet Berkan Öksüz",
         "Alattin Cebeci",
         "Hasan Sağlam",
@@ -44,12 +51,12 @@ if "kuryeler" not in st.session_state:
 
 if "veriler" not in st.session_state:
     st.session_state.veriler = pd.DataFrame(columns=[
-        "kurye", "zimmet", "teslim", "devir", "sms", "imza", "ks", "nakit", "kart"
+        "personel", "zimmet", "teslim", "devir", "sms", "imza", "ks", "nakit", "kart"
     ])
 
 if "tahsilatlar" not in st.session_state:
     st.session_state.tahsilatlar = pd.DataFrame(columns=[
-        "Kurye", "Firma Adı", "Tutar (₺)", "Açıklama"
+        "Personel", "Firma Adı", "Tutar (₺)", "Açıklama"
     ])
 
 # Üst Başlık ve Logo Alanı
@@ -59,30 +66,30 @@ with col_logo:
     st.image(LOGO_URL, width=90)
 
 with col_title:
-    st.title("Kurye Performans & Tahsilat Paneli")
+    st.title("Personel Performans & Tahsilat Paneli")
     st.caption("Mobil Uyumlu Otomatik Excel İşleme ve Canlı Raporlama")
 
-# --- SIDEBAR: KURYE YÖNETİMİ ---
+# --- SIDEBAR: PERSONEL YÖNETİMİ ---
 with st.sidebar:
-    st.header("⚙️ Kurye Yönetimi")
-    yeni_kurye = st.text_input("Yeni Kurye Adı Soyadı:")
-    if st.button("➕ Kurye Ekle"):
-        if yeni_kurye.strip():
-            if yeni_kurye.strip() not in st.session_state.kuryeler:
-                st.session_state.kuryeler.append(yeni_kurye.strip())
-                st.success(f"{yeni_kurye.strip()} eklendi!")
+    st.header("⚙️ Personel Yönetimi")
+    yeni_personel = st.text_input("Yeni Personel Adı Soyadı:")
+    if st.button("➕ Personel Ekle"):
+        if yeni_personel.strip():
+            if yeni_personel.strip() not in st.session_state.personeller:
+                st.session_state.personeller.append(yeni_personel.strip())
+                st.success(f"{yeni_personel.strip()} eklendi!")
                 st.rerun()
             else:
-                st.warning("Bu kurye zaten listede var.")
+                st.warning("Bu personel zaten listede var.")
         else:
             st.error("Lütfen geçerli bir isim girin.")
 
     st.markdown("---")
-    if st.session_state.kuryeler:
-        silinecek_kurye = st.selectbox("Silinecek Kurye Seçin:", st.session_state.kuryeler)
-        if st.button("🗑️ Seçili Kuryeyi Sil"):
-            st.session_state.kuryeler.remove(silinecek_kurye)
-            st.success(f"{silinecek_kurye} silindi!")
+    if st.session_state.personeller:
+        silinecek_personel = st.selectbox("Silinecek Personel Seçin:", st.session_state.personeller)
+        if st.button("🗑️ Seçili Personeli Sil"):
+            st.session_state.personeller.remove(silinecek_personel)
+            st.success(f"{silinecek_personel} silindi!")
             st.rerun()
 
 # İbre Grafiği Oluşturma Fonksiyonu
@@ -126,68 +133,79 @@ if uploaded_file is not None:
         else:
             df_raw = pd.read_excel(uploaded_file)
 
-        # Gerekli sütun kontrolü
-        beklenen_sutunlar = ["AT Zimmet Personel Adı", "Teslim eden Personel", "Kargo Teslimat Kanalı", "Açıklama"]
-        eksik_sutunlar = [col for col in beklenen_sutunlar if col not in df_raw.columns]
+        # Esnek Sütun Bulma Mantığı
+        col_map = {}
+        for c in df_raw.columns:
+            norm_c = normalize_text(c)
+            if "zimmet personel" in norm_c or "zimmet personel adi" in norm_c or "at zimmet" in norm_c:
+                col_map["zimmet_personel"] = c
+            elif "teslim eden" in norm_c or "teslim eden personel" in norm_c:
+                col_map["teslim_personel"] = c
+            elif "teslimat kanali" in norm_c or "kargo teslimat kanali" in norm_c:
+                col_map["kanal"] = c
+            elif "aciklama" in norm_c or "açıklama" in norm_c:
+                col_map["aciklama"] = c
 
-        if eksik_sutunlar:
-            st.error(f"Yüklenen Excel dosyasında şu sütunlar bulunamadı: {', '.join(eksik_sutunlar)}")
+        gerekli_anahtarlar = ["zimmet_personel", "teslim_personel", "kanal", "aciklama"]
+        eksikler = [k for k in gerekli_anahtarlar if k not in col_map]
+
+        if eksikler:
+            st.error(f"Excel dosyasında gerekli sütunlar tam olarak eşleştirilemedi. Dosyadaki sütunlar: {list(df_raw.columns)}")
         else:
-            # Sadece gerekli sütunları al ve boşlukları temizle
-            df = df_raw[beklenen_sutunlar].copy()
+            # Okuma ve Temizleme
+            df = df_raw[[col_map["zimmet_personel"], col_map["teslim_personel"], col_map["kanal"], col_map["aciklama"]]].copy()
+            df.columns = ["zimmet_personel", "teslim_personel", "kanal", "aciklama"]
+
             for col in df.columns:
                 df[col] = df[col].astype(str).str.strip()
 
             kullanici_ozet = []
-
-            # Benzersiz Zimmet Personelleri
-            personeller = df["AT Zimmet Personel Adı"].unique()
+            personeller = df["zimmet_personel"].unique()
 
             for p in personeller:
-                if p == "nan" or not p:
+                if p == "nan" or not p or p == "None":
                     continue
                 
                 # Personelin zimmetindeki tüm satırlar
-                p_df = df[df["AT Zimmet Personel Adı"] == p]
+                p_df = df[df["zimmet_personel"] == p]
                 zimmet_sayisi = len(p_df)
 
                 # Teslim edilenler (Zimmet personeli == Teslim eden personel)
-                teslim_df = p_df[p_df["AT Zimmet Personel Adı"] == p_df["Teslim eden Personel"]]
+                teslim_df = p_df[p_df["zimmet_personel"] == p_df["teslim_personel"]]
                 teslim_sayisi = len(teslim_df)
                 devir_sayisi = zimmet_sayisi - teslim_sayisi
 
-                # Kanal Hesaplamaları (Sadece teslim edilenler üzerinden)
+                # Kanal Hesaplamaları
                 sms_sayisi = 0
                 imza_sayisi = 0
                 ks_sayisi = 0
 
                 for _, row in teslim_df.iterrows():
-                    kanal = str(row["Kargo Teslimat Kanalı"]).upper()
-                    aciklama = str(row["Açıklama"]).upper()
+                    kanal_val = str(row["kanal"]).upper()
+                    aciklama_val = str(row["aciklama"]).upper()
 
-                    if kanal == "SMS":
+                    if "SMS" in kanal_val:
                         sms_sayisi += 1
-                    elif "İMZA" in kanal or "IMZA" in kanal:
+                    elif "İMZA" in kanal_val or "IMZA" in kanal_val:
                         imza_sayisi += 1
-                    elif kanal == "KAPIYA BIRAKILDI":
+                    elif "KAPIYA BIRAKILDI" in kanal_val:
                         ks_sayisi += 1
-                    elif (kanal == "NAN" or kanal == "" or kanal == "NONE") and ("POS ENTEGRASYON" in aciklama):
+                    elif (kanal_val in ["NAN", "", "NONE"]) and ("POS ENTEGRASYON" in aciklama_val):
                         ks_sayisi += 1
                     else:
-                        # Tanımlanamayan diğer teslimat durumları varsayılan olarak KS/Diğer sayılır
                         ks_sayisi += 1
 
-                # Mevcut manuel girilmiş nakit/kart verisini koru (varsa)
+                # Mevcut manuel girilmiş nakit/kart verisini koru
                 mevcut_veriler = st.session_state.veriler
                 nakit_val = 0.0
                 kart_val = 0.0
-                if not mevcut_veriler.empty and p in mevcut_veriler["kurye"].values:
-                    p_row = mevcut_veriler[mevcut_veriler["kurye"] == p].iloc[0]
+                if not mevcut_veriler.empty and p in mevcut_veriler["personel"].values:
+                    p_row = mevcut_veriler[mevcut_veriler["personel"] == p].iloc[0]
                     nakit_val = float(p_row.get("nakit", 0.0))
                     kart_val = float(p_row.get("kart", 0.0))
 
                 kullanici_ozet.append({
-                    "kurye": p,
+                    "personel": p,
                     "zimmet": zimmet_sayisi,
                     "teslim": teslim_sayisi,
                     "devir": devir_sayisi,
@@ -200,11 +218,11 @@ if uploaded_file is not None:
 
             new_df = pd.DataFrame(kullanici_ozet)
 
-            # Oturum verisini güncelle ve yeni kuryeleri yan menüye ekle
+            # Oturum verisini güncelle
             st.session_state.veriler = new_df
             for p in personeller:
-                if p and p != "nan" and p not in st.session_state.kuryeler:
-                    st.session_state.kuryeler.append(p)
+                if p and p not in ["nan", "None"] and p not in st.session_state.personeller:
+                    st.session_state.personeller.append(p)
 
             st.success("✅ Excel dosyası başarıyla okundu! Tüm veriler ve grafikler güncellendi.")
 
@@ -215,18 +233,18 @@ st.markdown("---")
 
 df_veriler = st.session_state.veriler
 df_tahsilat = st.session_state.tahsilatlar
-kurye_listesi = st.session_state.kuryeler
+personel_listesi = st.session_state.personeller
 
 # ==========================================
 # 1. ŞUBE TESLİM ORANI
 # ==========================================
-st.markdown("### 🎯 Şube Teslim oranı")
+st.markdown("### 🎯 Şube Teslim Oranı")
 
 toplam_zimmet = int(df_veriler["zimmet"].sum()) if not df_veriler.empty else 0
 toplam_teslim = int(df_veriler["teslim"].sum()) if not df_veriler.empty else 0
 toplam_devir = int(df_veriler["devir"].sum()) if not df_veriler.empty else 0
 
-fig_sube = ibre_grafik_ciz(toplam_teslim, toplam_zimmet, "Şube Teslim oranı", "Şube Genel Performansı")
+fig_sube = ibre_grafik_ciz(toplam_teslim, toplam_zimmet, "Şube Teslim Oranı", "Şube Genel Performansı")
 st.pyplot(fig_sube)
 
 st.markdown("---")
@@ -248,24 +266,24 @@ kpi3.metric("Toplam Tahsilat", f"{toplam_tahsilat:,.2f} ₺")
 st.markdown("---")
 
 # ==========================================
-# 3. KURYE BAZLI TESLİMAT VS DEVİR
+# 3. PERSONEL BAZLI TESLİMAT VS DEVİR
 # ==========================================
-st.markdown("### 📦 Kurye Bazlı Teslimat vs Devir")
+st.markdown("### 📦 Personel Bazlı Teslimat vs Devir")
 
 if not df_veriler.empty:
     fig_bar, ax_bar = plt.subplots(figsize=(6, 4))
     fig_bar.patch.set_facecolor('#0E1117')
     ax_bar.set_facecolor('#161B22')
 
-    kurye_names = df_veriler["kurye"].tolist()
-    y = range(len(kurye_names))
+    personel_names = df_veriler["personel"].tolist()
+    y = range(len(personel_names))
     height = 0.35
 
     rects1 = ax_bar.barh([i - height/2 for i in y], df_veriler["teslim"], height, label='Teslim', color='#10B981')
     rects2 = ax_bar.barh([i + height/2 for i in y], df_veriler["devir"], height, label='Devir', color='#EF4444')
 
     ax_bar.set_yticks(y)
-    ax_bar.set_yticklabels(kurye_names, color='white', fontsize=10)
+    ax_bar.set_yticklabels(personel_names, color='white', fontsize=10)
     ax_bar.tick_params(colors='white')
     ax_bar.spines['top'].set_visible(False)
     ax_bar.spines['right'].set_visible(False)
@@ -278,27 +296,27 @@ if not df_veriler.empty:
     plt.tight_layout()
     st.pyplot(fig_bar)
 else:
-    st.info("Kurye bazlı grafik için henüz Excel yüklenmedi veya veri girilmedi.")
+    st.info("Personel bazlı grafik için henüz Excel yüklenmedi veya veri girilmedi.")
 
 st.markdown("---")
 
 # ==========================================
-# 4. KURYE TESLİM PERFORMANSI
+# 4. PERSONEL TESLİM PERFORMANSI
 # ==========================================
-st.markdown("### ⏱️ Kurye teslim performansı")
+st.markdown("### ⏱️ Personel Teslim Performansı")
 
-if kurye_listesi:
-    kurye_ibre_secim = st.selectbox("Performansını Görmek İstediğiniz Kurye:", kurye_listesi)
+if personel_listesi:
+    personel_ibre_secim = st.selectbox("Performansını Görmek İstediğiniz Personel:", personel_listesi)
 
-    if not df_veriler.empty and kurye_ibre_secim in df_veriler["kurye"].values:
-        row = df_veriler[df_veriler["kurye"] == kurye_ibre_secim].iloc[0]
-        k_zimmet = int(row["zimmet"])
-        k_teslim = int(row["teslim"])
+    if not df_veriler.empty and personel_ibre_secim in df_veriler["personel"].values:
+        row = df_veriler[df_veriler["personel"] == personel_ibre_secim].iloc[0]
+        p_zimmet = int(row["zimmet"])
+        p_teslim = int(row["teslim"])
     else:
-        k_zimmet, k_teslim = 0, 0
+        p_zimmet, p_teslim = 0, 0
 
-    fig_kurye = ibre_grafik_ciz(k_teslim, k_zimmet, "Kurye teslim performansı", kurye_ibre_secim)
-    st.pyplot(fig_kurye)
+    fig_personel = ibre_grafik_ciz(p_teslim, p_zimmet, "Personel Teslim Performansı", personel_ibre_secim)
+    st.pyplot(fig_personel)
 
 st.markdown("---")
 
@@ -306,11 +324,11 @@ st.markdown("---")
 # 5. GÜNLÜK MANUEL VERİ / TAHSİLAT GİRİŞİ
 # ==========================================
 st.subheader("📝 Manuel Veri & Tahsilat Düzenleme")
-secilen_kurye = st.selectbox("Kurye Seçin:", kurye_listesi)
+secilen_personel = st.selectbox("Personel Seçin:", personel_listesi)
 
-mevcut_row = df_veriler[df_veriler["kurye"] == secilen_kurye] if not df_veriler.empty else pd.DataFrame()
+mevcut_row = df_veriler[df_veriler["personel"] == secilen_personel] if not df_veriler.empty else pd.DataFrame()
 
-with st.form("kurye_formu"):
+with st.form("personel_formu"):
     col1, col2 = st.columns(2)
     with col1:
         zimmet = st.number_input("Zimmetli Kargo:", min_value=0, value=int(mevcut_row["zimmet"].values[0]) if not mevcut_row.empty else 0)
@@ -333,7 +351,7 @@ with st.form("kurye_formu"):
 
 if kaydet_btn:
     yeni_veri = {
-        "kurye": secilen_kurye,
+        "personel": secilen_personel,
         "zimmet": zimmet,
         "teslim": teslim,
         "devir": devir,
@@ -345,13 +363,13 @@ if kaydet_btn:
     }
     yeni_df = pd.DataFrame([yeni_veri])
 
-    if not st.session_state.veriler.empty and "kurye" in st.session_state.veriler.columns:
-        st.session_state.veriler = st.session_state.veriler[st.session_state.veriler["kurye"] != secilen_kurye]
+    if not st.session_state.veriler.empty and "personel" in st.session_state.veriler.columns:
+        st.session_state.veriler = st.session_state.veriler[st.session_state.veriler["personel"] != secilen_personel]
         st.session_state.veriler = pd.concat([st.session_state.veriler, yeni_df], ignore_index=True)
     else:
         st.session_state.veriler = yeni_df
 
-    st.success(f"✓ {secilen_kurye} verileri güncellendi!")
+    st.success(f"✓ {secilen_personel} verileri güncellendi!")
     st.rerun()
 
 st.markdown("---")
@@ -361,7 +379,7 @@ st.markdown("---")
 # ==========================================
 st.subheader("🏢 Firma Bazlı Özel Tahsilat Girişi")
 
-kurye_firma_secim = st.selectbox("Tahsilat Eklenecek Kurye:", kurye_listesi, key="kurye_firma")
+personel_firma_secim = st.selectbox("Tahsilat Eklenecek Personel:", personel_listesi, key="personel_firma")
 
 with st.form("firma_tahsilat_formu"):
     c_f1, c_f2, c_f3 = st.columns([2, 1.5, 2.5])
@@ -377,7 +395,7 @@ with st.form("firma_tahsilat_formu"):
 if firma_kaydet_btn:
     if firma_adi.strip() and firma_tutar > 0:
         yeni_tahsilat = {
-            "Kurye": kurye_firma_secim,
+            "Personel": personel_firma_secim,
             "Firma Adı": firma_adi.strip(),
             "Tutar (₺)": firma_tutar,
             "Açıklama": firma_aciklama.strip()
@@ -390,12 +408,12 @@ if firma_kaydet_btn:
     else:
         st.error("Lütfen Firma Adı ve 0'dan büyük Tutar giriniz.")
 
-# Seçili Kuryenin Mevcut Firma Tahsilat Listesi
-if not df_tahsilat.empty and "Kurye" in df_tahsilat.columns:
-    kurye_tahsilatlari = df_tahsilat[df_tahsilat["Kurye"] == kurye_firma_secim]
-    if not kurye_tahsilatlari.empty:
-        st.markdown(f"**{kurye_firma_secim} - Kayıtlı Firma Tahsilatları:**")
-        df_goster = kurye_tahsilatlari.reset_index(drop=True)
+# Seçili Personelin Mevcut Firma Tahsilat Listesi
+if not df_tahsilat.empty and "Personel" in df_tahsilat.columns:
+    personel_tahsilatlari = df_tahsilat[df_tahsilat["Personel"] == personel_firma_secim]
+    if not personel_tahsilatlari.empty:
+        st.markdown(f"**{personel_firma_secim} - Kayıtlı Firma Tahsilatları:**")
+        df_goster = personel_tahsilatlari.reset_index(drop=True)
         df_goster.index = range(1, len(df_goster) + 1)
         st.dataframe(df_goster[["Firma Adı", "Tutar (₺)", "Açıklama"]], use_container_width=True)
 
