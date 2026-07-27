@@ -33,7 +33,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- Metin Normalleştirme (Sütun Adı Eşleştirme İçin) ---
+# --- Metin Normalleştirme (Sütun Adı & Veri Eşleştirme İçin) ---
 def normalize_text(text):
     text = str(text).strip().lower()
     text = text.replace('ı', 'i').replace('ğ', 'g').replace('ü', 'u').replace('ş', 's').replace('ö', 'o').replace('ç', 'c')
@@ -131,48 +131,40 @@ if uploaded_file is not None:
         file_bytes = uploaded_file.getvalue()
         df_raw = None
 
-        # 1. DENEME: Eski Format Excel (.xls - xlrd motoru ile)
+        # 1. DENEME: Eski Format Excel (.xls)
         try:
             df_raw = pd.read_excel(io.BytesIO(file_bytes), engine="xlrd")
         except Exception:
             pass
 
-        # 2. DENEME: Yeni Format Excel (.xlsx - openpyxl motoru ile)
+        # 2. DENEME: Yeni Format Excel (.xlsx)
         if df_raw is None:
             try:
                 df_raw = pd.read_excel(io.BytesIO(file_bytes), engine="openpyxl")
             except Exception:
                 pass
 
-        # 3. DENEME: Motor belirtmeden genel read_excel
+        # 3. DENEME: Genel read_excel
         if df_raw is None:
             try:
                 df_raw = pd.read_excel(io.BytesIO(file_bytes))
             except Exception:
                 pass
 
-        # 4. DENEME: CSV (Noktalı Virgül - Latin5/Türkçe Kodlama)
+        # 4. DENEME: CSV
         if df_raw is None:
-            try:
-                df_raw = pd.read_csv(io.BytesIO(file_bytes), sep=";", encoding="latin5", on_bad_lines="skip")
-            except Exception:
-                pass
+            for enc in ["latin5", "utf-8", "iso-8859-9"]:
+                for sep in [";", ",", "\t"]:
+                    try:
+                        df_raw = pd.read_csv(io.BytesIO(file_bytes), sep=sep, encoding=enc, on_bad_lines="skip")
+                        if len(df_raw.columns) > 1:
+                            break
+                    except Exception:
+                        pass
+                if df_raw is not None and len(df_raw.columns) > 1:
+                    break
 
-        # 5. DENEME: CSV (Virgül - UTF-8 Kodlama)
-        if df_raw is None:
-            try:
-                df_raw = pd.read_csv(io.BytesIO(file_bytes), encoding="utf-8", on_bad_lines="skip")
-            except Exception:
-                pass
-
-        # 6. DENEME: CSV (Noktalı Virgül - UTF-8 Kodlama)
-        if df_raw is None:
-            try:
-                df_raw = pd.read_csv(io.BytesIO(file_bytes), sep=";", encoding="utf-8", on_bad_lines="skip")
-            except Exception:
-                pass
-
-        # 7. DENEME: Gerçek HTML Tablosu Şeklinde Dışa Aktarılmış .xls Dosyaları
+        # 5. DENEME: HTML Tablosu
         if df_raw is None:
             try:
                 dfs = pd.read_html(io.BytesIO(file_bytes))
@@ -182,71 +174,97 @@ if uploaded_file is not None:
                 pass
 
         if df_raw is None:
-            st.error("❌ Dosya biçimi okunamadı. Lütfen dosyanızın geçerli bir Excel veya CSV olduğundan emin olun.")
+            st.error("❌ Dosya biçimi okunamadı. Lütfen geçerli bir Excel veya CSV dosyası yükleyin.")
         else:
-            # Esnek Sütun Bulma Mantığı
+            # Esnek Sütun Eşleştirme
             col_map = {}
             for c in df_raw.columns:
                 norm_c = normalize_text(c)
-                if "zimmet personel" in norm_c or "zimmet personel adi" in norm_c or "at zimmet" in norm_c:
+                
+                # Zimmet Personeli
+                if any(k in norm_c for k in ["zimmet personel", "at zimmet", "kurye", "dağıtıcı", "dagitici"]):
                     col_map["zimmet_personel"] = c
-                elif "teslim eden" in norm_c or "teslim eden personel" in norm_c:
-                    col_map["teslim_personel"] = c
-                elif "teslimat kanali" in norm_c or "kargo teslimat kanali" in norm_c:
+                
+                # Teslim / Kargo Durumu
+                elif any(k in norm_c for k in ["teslim durumu", "kargo durumu", "son durum", "durum", "teslimat durumu"]):
+                    col_map["durum"] = c
+                
+                # Teslimat Kanalı
+                elif any(k in norm_c for k in ["teslimat kanali", "kanal", "teslim tipi"]):
                     col_map["kanal"] = c
+                
+                # Açıklama
                 elif "aciklama" in norm_c or "açıklama" in norm_c:
                     col_map["aciklama"] = c
 
-            gerekli_anahtarlar = ["zimmet_personel", "teslim_personel", "kanal", "aciklama"]
+            # Eğer Durum sütunu bulunamazsa ikincil tarama
+            if "durum" not in col_map:
+                for c in df_raw.columns:
+                    norm_c = normalize_text(c)
+                    if "teslim" in norm_c and c not in col_map.values():
+                        col_map["durum"] = c
+                        break
+
+            gerekli_anahtarlar = ["zimmet_personel", "durum"]
             eksikler = [k for k in gerekli_anahtarlar if k not in col_map]
 
             if eksikler:
-                st.error(f"Excel dosyasında gerekli sütunlar tam olarak eşleştirilemedi. Dosyadaki sütunlar: {list(df_raw.columns)}")
+                st.error(f"Excel dosyasında zimmet personeli veya durum sütunları tespit edilemedi. Dosyadaki sütunlar: {list(df_raw.columns)}")
             else:
-                # Okuma ve Temizleme
-                df = df_raw[[col_map["zimmet_personel"], col_map["teslim_personel"], col_map["kanal"], col_map["aciklama"]]].copy()
-                df.columns = ["zimmet_personel", "teslim_personel", "kanal", "aciklama"]
-
-                for col in df.columns:
-                    df[col] = df[col].astype(str).str.strip()
+                # Veriyi Temizleme
+                df = df_raw.copy()
+                df["zimmet_personel"] = df[col_map["zimmet_personel"]].astype(str).str.strip()
+                df["durum"] = df[col_map["durum"]].astype(str).str.strip()
+                
+                df["kanal"] = df[col_map["kanal"]].astype(str).str.strip() if "kanal" in col_map else ""
+                df["aciklama"] = df[col_map["aciklama"]].astype(str).str.strip() if "aciklama" in col_map else ""
 
                 kullanici_ozet = []
                 personeller = df["zimmet_personel"].unique()
 
                 for p in personeller:
-                    if p == "nan" or not p or p == "None":
+                    if p.lower() in ["nan", "", "none", "null"]:
                         continue
                     
-                    # Personelin zimmetindeki tüm satırlar
                     p_df = df[df["zimmet_personel"] == p]
                     zimmet_sayisi = len(p_df)
 
-                    # Teslim edilenler (Zimmet personeli == Teslim eden personel)
-                    teslim_df = p_df[p_df["zimmet_personel"] == p_df["teslim_personel"]]
-                    teslim_edildi_sayisi = len(teslim_df)
-                    teslim_edilmedi_bekletiliyor_sayisi = zimmet_sayisi - teslim_edildi_sayisi
+                    # TESLİM EDİLDİ VE TESLİM EDİLMEYEN/BEKLETİLEN AYRIMI
+                    teslim_edildi_sayisi = 0
+                    teslim_edilmedi_bekletiliyor_sayisi = 0
 
-                    # Kanal Hesaplamaları
                     sms_sayisi = 0
                     imza_sayisi = 0
                     ks_sayisi = 0
 
-                    for _, row in teslim_df.iterrows():
-                        kanal_val = str(row["kanal"]).upper()
-                        aciklama_val = str(row["aciklama"]).upper()
+                    for _, row in p_df.iterrows():
+                        norm_durum = normalize_text(row["durum"])
+                        
+                        # Teslim Edilmiş Sayılan Durumlar
+                        is_teslim = any(k in norm_durum for k in ["teslim edildi", "teslimat yapildi", "teslim yapildi", "teslimdir"]) or norm_durum == "teslim"
+                        
+                        if is_teslim:
+                            teslim_edildi_sayisi += 1
+                            
+                            # Kanal Tipleri
+                            kanal_val = str(row["kanal"]).upper()
+                            aciklama_val = str(row["aciklama"]).upper()
 
-                        if "SMS" in kanal_val:
-                            sms_sayisi += 1
-                        elif "İMZA" in kanal_val or "IMZA" in kanal_val:
-                            imza_sayisi += 1
-                        elif "KAPIYA BIRAKILDI" in kanal_val:
-                            ks_sayisi += 1
-                        elif (kanal_val in ["NAN", "", "NONE"]) and ("POS ENTEGRASYON" in aciklama_val):
-                            ks_sayisi += 1
+                            if "SMS" in kanal_val:
+                                sms_sayisi += 1
+                            elif "İMZA" in kanal_val or "IMZA" in kanal_val:
+                                imza_sayisi += 1
+                            elif "KAPIYA BIRAKILDI" in kanal_val or "KS" in kanal_val:
+                                ks_sayisi += 1
+                            elif ("POS ENTEGRASYON" in aciklama_val):
+                                ks_sayisi += 1
+                            else:
+                                ks_sayisi += 1
                         else:
-                            ks_sayisi += 1
+                            # Teslim edilmeyen / Devir / Bekletilen
+                            teslim_edilmedi_bekletiliyor_sayisi += 1
 
-                    # Mevcut manuel girilmiş nakit/kart verisini koru
+                    # Manuel girilmiş tahsilat tutarlarını koru
                     mevcut_veriler = st.session_state.veriler
                     nakit_val = 0.0
                     kart_val = 0.0
@@ -272,10 +290,10 @@ if uploaded_file is not None:
                 # Oturum verisini güncelle
                 st.session_state.veriler = new_df
                 for p in personeller:
-                    if p and p not in ["nan", "None"] and p not in st.session_state.personeller:
+                    if p and p.lower() not in ["nan", "none", ""] and p not in st.session_state.personeller:
                         st.session_state.personeller.append(p)
 
-                st.success("✅ Dosya başarıyla okundu! Tüm veriler ve grafikler güncellendi.")
+                st.success("✅ Dosya başarıyla analiz edildi ve durum sayıları güncellendi!")
 
     except Exception as e:
         st.error(f"Dosya işlenirken hata oluştu: {e}")
