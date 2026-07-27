@@ -60,7 +60,7 @@ with col_logo:
 
 with col_title:
     st.title("Kurye Performans & Tahsilat Paneli")
-    st.caption("Mobil Uyumlu Veri Girişi ve Canlı Raporlama Sistemi")
+    st.caption("Mobil Uyumlu Otomatik Excel İşleme ve Canlı Raporlama")
 
 # --- SIDEBAR: KURYE YÖNETİMİ ---
 with st.sidebar:
@@ -111,6 +111,107 @@ def ibre_grafik_ciz(teslim, zimmet, baslik_metni, alt_metin=""):
     ax.text(0, -0.35, f"{alt_metin}\nZimmet: {zimmet} | Teslim: {teslim}", horizontalalignment='center', verticalalignment='center', fontsize=10, color='#8B949E')
 
     return fig
+
+# ==========================================
+# 📁 EXCEL DOSYASI İLE OTOMATİK VERİ İŞLEME
+# ==========================================
+st.subheader("📁 Excel Dosyasından Otomatik Aktarım")
+
+uploaded_file = st.file_uploader("Kargo Excel Dosyanızı Yükleyin (.xlsx veya .csv)", type=["xlsx", "xls", "csv"])
+
+if uploaded_file is not None:
+    try:
+        if uploaded_file.name.endswith(".csv"):
+            df_raw = pd.read_csv(uploaded_file)
+        else:
+            df_raw = pd.read_excel(uploaded_file)
+
+        # Gerekli sütun kontrolü
+        beklenen_sutunlar = ["AT Zimmet Personel Adı", "Teslim eden Personel", "Kargo Teslimat Kanalı", "Açıklama"]
+        eksik_sutunlar = [col for col in beklenen_sutunlar if col not in df_raw.columns]
+
+        if eksik_sutunlar:
+            st.error(f"Yüklenen Excel dosyasında şu sütunlar bulunamadı: {', '.join(eksik_sutunlar)}")
+        else:
+            # Sadece gerekli sütunları al ve boşlukları temizle
+            df = df_raw[beklenen_sutunlar].copy()
+            for col in df.columns:
+                df[col] = df[col].astype(str).str.strip()
+
+            kullanici_ozet = []
+
+            # Benzersiz Zimmet Personelleri
+            personeller = df["AT Zimmet Personel Adı"].unique()
+
+            for p in personeller:
+                if p == "nan" or not p:
+                    continue
+                
+                # Personelin zimmetindeki tüm satırlar
+                p_df = df[df["AT Zimmet Personel Adı"] == p]
+                zimmet_sayisi = len(p_df)
+
+                # Teslim edilenler (Zimmet personeli == Teslim eden personel)
+                teslim_df = p_df[p_df["AT Zimmet Personel Adı"] == p_df["Teslim eden Personel"]]
+                teslim_sayisi = len(teslim_df)
+                devir_sayisi = zimmet_sayisi - teslim_sayisi
+
+                # Kanal Hesaplamaları (Sadece teslim edilenler üzerinden)
+                sms_sayisi = 0
+                imza_sayisi = 0
+                ks_sayisi = 0
+
+                for _, row in teslim_df.iterrows():
+                    kanal = str(row["Kargo Teslimat Kanalı"]).upper()
+                    aciklama = str(row["Açıklama"]).upper()
+
+                    if kanal == "SMS":
+                        sms_sayisi += 1
+                    elif "İMZA" in kanal or "IMZA" in kanal:
+                        imza_sayisi += 1
+                    elif kanal == "KAPIYA BIRAKILDI":
+                        ks_sayisi += 1
+                    elif (kanal == "NAN" or kanal == "" or kanal == "NONE") and ("POS ENTEGRASYON" in aciklama):
+                        ks_sayisi += 1
+                    else:
+                        # Tanımlanamayan diğer teslimat durumları varsayılan olarak KS/Diğer sayılır
+                        ks_sayisi += 1
+
+                # Mevcut manuel girilmiş nakit/kart verisini koru (varsa)
+                mevcut_veriler = st.session_state.veriler
+                nakit_val = 0.0
+                kart_val = 0.0
+                if not mevcut_veriler.empty and p in mevcut_veriler["kurye"].values:
+                    p_row = mevcut_veriler[mevcut_veriler["kurye"] == p].iloc[0]
+                    nakit_val = float(p_row.get("nakit", 0.0))
+                    kart_val = float(p_row.get("kart", 0.0))
+
+                kullanici_ozet.append({
+                    "kurye": p,
+                    "zimmet": zimmet_sayisi,
+                    "teslim": teslim_sayisi,
+                    "devir": devir_sayisi,
+                    "sms": sms_sayisi,
+                    "imza": imza_sayisi,
+                    "ks": ks_sayisi,
+                    "nakit": nakit_val,
+                    "kart": kart_val
+                })
+
+            new_df = pd.DataFrame(kullanici_ozet)
+
+            # Oturum verisini güncelle ve yeni kuryeleri yan menüye ekle
+            st.session_state.veriler = new_df
+            for p in personeller:
+                if p and p != "nan" and p not in st.session_state.kuryeler:
+                    st.session_state.kuryeler.append(p)
+
+            st.success("✅ Excel dosyası başarıyla okundu! Tüm veriler ve grafikler güncellendi.")
+
+    except Exception as e:
+        st.error(f"Excel işlenirken hata oluştu: {e}")
+
+st.markdown("---")
 
 df_veriler = st.session_state.veriler
 df_tahsilat = st.session_state.tahsilatlar
@@ -177,7 +278,7 @@ if not df_veriler.empty:
     plt.tight_layout()
     st.pyplot(fig_bar)
 else:
-    st.info("Kurye bazlı grafik için henüz veri girilmedi.")
+    st.info("Kurye bazlı grafik için henüz Excel yüklenmedi veya veri girilmedi.")
 
 st.markdown("---")
 
@@ -202,9 +303,9 @@ if kurye_listesi:
 st.markdown("---")
 
 # ==========================================
-# 5. GÜNLÜK VERİ GİRİŞİ
+# 5. GÜNLÜK MANUEL VERİ / TAHSİLAT GİRİŞİ
 # ==========================================
-st.subheader("📝 Günlük Veri Girişi")
+st.subheader("📝 Manuel Veri & Tahsilat Düzenleme")
 secilen_kurye = st.selectbox("Kurye Seçin:", kurye_listesi)
 
 mevcut_row = df_veriler[df_veriler["kurye"] == secilen_kurye] if not df_veriler.empty else pd.DataFrame()
@@ -228,7 +329,7 @@ with st.form("kurye_formu"):
     with col4:
         kart = st.number_input("Kredi Kartı / POS (₺):", min_value=0.0, value=float(mevcut_row["kart"].values[0]) if not mevcut_row.empty else 0.0)
 
-    kaydet_btn = st.form_submit_button("💾 Kurye Verisini Kaydet")
+    kaydet_btn = st.form_submit_button("💾 Verileri Kaydet / Güncelle")
 
 if kaydet_btn:
     yeni_veri = {
@@ -250,7 +351,7 @@ if kaydet_btn:
     else:
         st.session_state.veriler = yeni_df
 
-    st.success(f"✓ {secilen_kurye} verileri kaydedildi!")
+    st.success(f"✓ {secilen_kurye} verileri güncellendi!")
     st.rerun()
 
 st.markdown("---")
