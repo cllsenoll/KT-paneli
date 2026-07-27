@@ -145,7 +145,7 @@ def ibre_grafik_ciz(teslim_edildi, bekletiliyor, zimmet, baslik_metni, alt_metin
 
     return fig
 
-# 2. Pasta Grafiği (Teslimat Kanalları)
+# 2. Pasta Grafiği (Genel Kargo Teslimat Kanalları)
 def pasta_grafigi_ciz(sms, imza, ks):
     etiketler = []
     degerler = []
@@ -189,7 +189,38 @@ def pasta_grafigi_ciz(sms, imza, ks):
     ax.set_title("Kargo Teslimat Kanalları Dağılımı", color="white", fontsize=11, fontweight="bold", pad=10)
     return fig
 
-# 3. Sütun Grafiği (Personel Bazlı Teslim / Bekleyen)
+# 3. Personel Özel Teslimat Oranı Pasta Grafiği
+def personel_pasta_grafigi_ciz(personel_adi, teslim_edildi, bekletiliyor):
+    fig, ax = plt.subplots(figsize=(4, 3.2))
+    fig.patch.set_facecolor('#0E1117')
+    ax.set_facecolor('#0E1117')
+
+    degerler = [teslim_edildi, bekletiliyor]
+    etiketler = [f"Teslim Edildi\n({teslim_edildi})", f"Bekletiliyor\n({bekletiliyor})"]
+    renkler = ['#10B981', '#EF4444']
+
+    if sum(degerler) == 0:
+        ax.text(0.5, 0.5, "Henüz Veri Yok", color="white", ha="center", va="center", fontsize=11)
+        ax.axis("off")
+        return fig
+
+    wedges, texts, autotexts = ax.pie(
+        degerler, 
+        labels=etiketler, 
+        autopct='%1.1f%%', 
+        startangle=90, 
+        colors=renkler,
+        textprops=dict(color="white", fontsize=9)
+    )
+
+    for autotext in autotexts:
+        autotext.set_color('white')
+        autotext.set_weight('bold')
+
+    ax.set_title(f"{personel_adi}\nTeslimat Durum Dağılımı", color="white", fontsize=10, fontweight="bold", pad=10)
+    return fig
+
+# 4. Sütun Grafiği (Personel Bazlı Teslim / Bekleyen)
 def sutun_grafigi_ciz(df_veriler):
     fig, ax = plt.subplots(figsize=(7, 3.5))
     fig.patch.set_facecolor('#0E1117')
@@ -215,7 +246,6 @@ def sutun_grafigi_ciz(df_veriler):
     ax.spines['bottom'].set_color('#374151')
     ax.spines['left'].set_color('#374151')
 
-    # Bar üstüne değerleri yazma
     for rect in rects1:
         h = rect.get_height()
         if h > 0:
@@ -543,9 +573,43 @@ kpi1.metric("Toplam Teslim Edildi", f"{toplam_teslim_edildi} Adet")
 kpi2.metric("Teslim Edilmedi / Bekletiliyor", f"{toplam_teslim_edilmedi_bekletiliyor} Adet")
 kpi3.metric("Toplam Fatura Borcu", f"{toplam_tahsilat:,.2f} ₺")
 
+# NEW SECTION: PERSONEL BAZLI ÖZEL ANALİZ (YÜZDELİK VE PASTA GRAFİĞİ)
+st.markdown("#### 👤 Personel Bazlı Özel Teslimat Analizi")
+
+if personel_listesi:
+    secili_p_analiz = st.selectbox("Analiz Edilecek Personeli Seçin:", personel_listesi, key="analiz_personel_select")
+    
+    p_zimmet = 0
+    p_teslim = 0
+    p_bekleyen = 0
+
+    if not df_veriler.empty:
+        p_df = df_veriler[df_veriler["personel"] == secili_p_analiz]
+        if not p_df.empty:
+            p_zimmet = int(p_df["zimmet"].sum())
+            p_teslim = int(p_df["teslim_edildi"].sum())
+            p_bekleyen = int(p_df["teslim_edilmedi_bekletiliyor"].sum())
+
+    p_yuzde = (p_teslim / p_zimmet * 100) if p_zimmet > 0 else 0.0
+
+    col_p_info, col_p_chart = st.columns([1.2, 1])
+
+    with col_p_info:
+        st.markdown(f"**{secili_p_analiz}** Detaylı Performans Verileri:")
+        st.metric("Teslimat Başarı Oranı", f"%{p_yuzde:.1f}")
+        
+        c_k1, c_k2, c_k3 = st.columns(3)
+        c_k1.metric("Zimmet", f"{p_zimmet}")
+        c_k2.metric("Teslim", f"{p_teslim}")
+        c_k3.metric("Bekleyen", f"{p_bekleyen}")
+
+    with col_p_chart:
+        fig_p_pasta = personel_pasta_grafigi_ciz(secili_p_analiz, p_teslim, p_bekleyen)
+        st.pyplot(fig_p_pasta)
+
 # Personel Bazlı Performans Özeti Tablosu
 if not df_veriler.empty:
-    st.markdown("#### 👥 Personel Zimmet & Teslim Özeti")
+    st.markdown("#### 👥 Personel Zimmet & Teslim Özeti Tablosu")
     df_ozet_goster = df_veriler.groupby("personel")[["zimmet", "teslim_edildi", "teslim_edilmedi_bekletiliyor", "sms", "imza", "ks"]].sum().reset_index()
     df_ozet_goster.columns = ["Personel", "Zimmet Adedi", "Teslim Edilen", "Bekleyen", "SMS", "İmza", "KS/Diğer"]
     st.dataframe(df_ozet_goster, use_container_width=True)
