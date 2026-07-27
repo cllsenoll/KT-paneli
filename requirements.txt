@@ -3,3 +3,8 @@ pandas
 matplotlib
 numpy
 gspread
+streamlit
+pandas
+matplotlib
+numpy
+openpyxl
