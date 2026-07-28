@@ -165,8 +165,12 @@ if "personeller" not in st.session_state:
 
 if "veriler" not in st.session_state:
     st.session_state.veriler = pd.DataFrame(columns=[
-        "personel", "zimmet", "teslim_edildi", "teslim_edilmedi_bekletiliyor", "sms", "imza", "ks", "nakit", "kart",
-        "nakit_ft_tutari_top", "nakit_odeme_tutari_top", "banka", "toplam_tahsilat"
+        "personel", "zimmet", "teslim_edildi", "teslim_edilmedi_bekletiliyor", "sms", "imza", "ks", "nakit", "kart"
+    ])
+
+if "hesap_verileri" not in st.session_state:
+    st.session_state.hesap_verileri = pd.DataFrame(columns=[
+        "personel", "nakit_ft_tutari_top", "nakit_odeme_tutari_top", "banka", "toplam_tahsilat"
     ])
 
 if "tahsilatlar" not in st.session_state:
@@ -372,6 +376,7 @@ uploaded_files = st.file_uploader(
 if uploaded_files:
     tum_f4_listesi = []
     kullanici_ozet_listesi = []
+    hesap_ozet_listesi = []
 
     for uploaded_file in uploaded_files:
         try:
@@ -462,10 +467,12 @@ if uploaded_files:
                         col_map["odeme_tipi"] = c
 
                 is_pure_f4_file = ("f4" in file_name_lower or "f4 odeme" in file_name_lower) and "summary_zimmet" not in col_map
+                is_hesap_alimi_file = "hesap" in file_name_lower or ("nakit_ft_tutari_top" in col_map or "nakit_odeme_tutari_top" in col_map)
+                
                 df = df_raw.copy()
 
                 # AKIŞ A: F4 ÖDEME LİSTESİ İŞLEME
-                if is_pure_f4_file or ("musteri_adi" in col_map and "durum" not in col_map):
+                if is_pure_f4_file or ("musteri_adi" in col_map and "durum" not in col_map and not is_hesap_alimi_file):
                     df["musteri_adi"] = df[col_map["musteri_adi"]].astype(str).str.strip() if "musteri_adi" in col_map else "Müşteri Belirtilmedi"
                     
                     if "aciklama" in col_map:
@@ -504,10 +511,39 @@ if uploaded_files:
                             if matched_p not in st.session_state.personeller:
                                 st.session_state.personeller.append(matched_p)
 
-                # AKIŞ B: ÖZET / PERFORMANS / HESAP ALIMI DOSYASI İŞLEME
+                # AKIŞ B: YALNIZCA PERSONEL HESAP ALIMI EKRANI İŞLEME
+                elif is_hesap_alimi_file and "zimmet_personel" in col_map:
+                    df["zimmet_personel"] = df[col_map["zimmet_personel"]].astype(str).str.strip()
+                    for _, row in df.iterrows():
+                        raw_p = row["zimmet_personel"]
+                        if str(raw_p).lower() in ["nan", "", "none", "null", "toplam"]:
+                            continue
+
+                        matched_p = match_personel_name(raw_p, st.session_state.personeller)
+                        if not matched_p:
+                            matched_p = re.sub(r'\s+', ' ', str(raw_p).strip()).upper()
+
+                        nft_val = parse_numeric_val(row[col_map["nakit_ft_tutari_top"]]) if "nakit_ft_tutari_top" in col_map else 0.0
+                        nod_val = parse_numeric_val(row[col_map["nakit_odeme_tutari_top"]]) if "nakit_odeme_tutari_top" in col_map else 0.0
+                        
+                        banka_val = st.session_state.banka_girisleri.get(matched_p, 0.0)
+                        toplam_tahsilat_val = (nft_val + nod_val) - banka_val
+
+                        hesap_ozet_listesi.append({
+                            "personel": matched_p,
+                            "nakit_ft_tutari_top": nft_val,
+                            "nakit_odeme_tutari_top": nod_val,
+                            "banka": banka_val,
+                            "toplam_tahsilat": toplam_tahsilat_val
+                        })
+
+                        if matched_p not in st.session_state.personeller:
+                            st.session_state.personeller.append(matched_p)
+
+                # AKIŞ C: ÖZET / PERFORMANS / AT ZİMMET İZLEME DOSYASI İŞLEME
                 elif "zimmet_personel" in col_map:
                     df["zimmet_personel"] = df[col_map["zimmet_personel"]].astype(str).str.strip()
-                    is_summary_excel = "summary_zimmet" in col_map or ("summary_teslim" in col_map and "durum" not in col_map) or ("nakit_ft_tutari_top" in col_map or "nakit_odeme_tutari_top" in col_map)
+                    is_summary_excel = "summary_zimmet" in col_map or ("summary_teslim" in col_map and "durum" not in col_map)
 
                     if is_summary_excel:
                         for _, row in df.iterrows():
@@ -523,25 +559,12 @@ if uploaded_files:
                             t_val = int(parse_numeric_val(row[col_map["summary_teslim"]])) if "summary_teslim" in col_map else 0
                             b_val = int(parse_numeric_val(row[col_map["summary_bekleyen"]])) if "summary_bekleyen" in col_map else (z_val - t_val if z_val >= t_val else 0)
 
-                            nft_val = parse_numeric_val(row[col_map["nakit_ft_tutari_top"]]) if "nakit_ft_tutari_top" in col_map else 0.0
-                            nod_val = parse_numeric_val(row[col_map["nakit_odeme_tutari_top"]]) if "nakit_odeme_tutari_top" in col_map else 0.0
-                            
-                            # Banka giriş değerini al, yoksa 0.0
-                            banka_val = st.session_state.banka_girisleri.get(matched_p, 0.0)
-                            
-                            # Formül: (Nakit Ft + Nakit Ödeme) - Banka
-                            toplam_tahsilat_val = (nft_val + nod_val) - banka_val
-
                             kullanici_ozet_listesi.append({
                                 "personel": matched_p,
                                 "zimmet": z_val,
                                 "teslim_edildi": t_val,
                                 "teslim_edilmedi_bekletiliyor": b_val,
-                                "sms": 0, "imza": 0, "ks": 0, "nakit": 0.0, "kart": 0.0,
-                                "nakit_ft_tutari_top": nft_val,
-                                "nakit_odeme_tutari_top": nod_val,
-                                "banka": banka_val,
-                                "toplam_tahsilat": toplam_tahsilat_val
+                                "sms": 0, "imza": 0, "ks": 0, "nakit": 0.0, "kart": 0.0
                             })
 
                             if matched_p not in st.session_state.personeller:
@@ -590,18 +613,13 @@ if uploaded_files:
                                 else:
                                     teslim_edilmedi_bekletiliyor_sayisi += 1
 
-                            banka_val = st.session_state.banka_girisleri.get(matched_p, 0.0)
-
                             kullanici_ozet_listesi.append({
                                 "personel": matched_p,
                                 "zimmet": zimmet_sayisi,
                                 "teslim_edildi": teslim_edildi_sayisi,
                                 "teslim_edilmedi_bekletiliyor": teslim_edilmedi_bekletiliyor_sayisi,
                                 "sms": sms_sayisi, "imza": imza_sayisi, "ks": ks_sayisi,
-                                "nakit": auto_nakit, "kart": auto_kart,
-                                "nakit_ft_tutari_top": 0.0, "nakit_odeme_tutari_top": 0.0,
-                                "banka": banka_val,
-                                "toplam_tahsilat": auto_nakit - banka_val
+                                "nakit": auto_nakit, "kart": auto_kart
                             })
 
                             if matched_p not in st.session_state.personeller:
@@ -612,6 +630,8 @@ if uploaded_files:
 
     if kullanici_ozet_listesi:
         st.session_state.veriler = pd.DataFrame(kullanici_ozet_listesi)
+    if hesap_ozet_listesi:
+        st.session_state.hesap_verileri = pd.DataFrame(hesap_ozet_listesi)
     if tum_f4_listesi:
         st.session_state.tahsilatlar = pd.DataFrame(tum_f4_listesi)
     
@@ -620,6 +640,7 @@ if uploaded_files:
 st.markdown("---")
 
 df_veriler = st.session_state.veriler
+df_hesap_verileri = st.session_state.hesap_verileri
 df_tahsilat = st.session_state.tahsilatlar
 personel_listesi = st.session_state.personeller
 
@@ -709,12 +730,12 @@ if not df_veriler.empty:
 st.markdown("---")
 
 # ==========================================
-# 3. PERSONEL HESAP ALIMI EKRANI (GÜNCELLENDİ)
+# 3. PERSONEL HESAP ALIMI EKRANI (AYRIŞTIRILDI)
 # ==========================================
 st.subheader("💵 Personel Hesap Alımı Ekranı")
 
-if not df_veriler.empty and ("nakit_ft_tutari_top" in df_veriler.columns or "nakit_odeme_tutari_top" in df_veriler.columns):
-    df_hesap = df_veriler.groupby("personel")[["nakit_ft_tutari_top", "nakit_odeme_tutari_top"]].sum().reset_index()
+if not df_hesap_verileri.empty:
+    df_hesap = df_hesap_verileri.groupby("personel")[["nakit_ft_tutari_top", "nakit_odeme_tutari_top"]].sum().reset_index()
     
     # Mevcut banka değerlerini oturumdan ekle
     df_hesap["banka"] = df_hesap["personel"].apply(lambda p: st.session_state.banka_girisleri.get(p, 0.0))
@@ -761,10 +782,10 @@ if not df_veriler.empty and ("nakit_ft_tutari_top" in df_veriler.columns or "nak
     if devises_made:
         # Anlık oturum verilerini güncelle ve sayfayı yenile
         for p_name, b_val in st.session_state.banka_girisleri.items():
-            st.session_state.veriler.loc[st.session_state.veriler["personel"] == p_name, "banka"] = b_val
-            st.session_state.veriler.loc[st.session_state.veriler["personel"] == p_name, "toplam_tahsilat"] = (
-                st.session_state.veriler.loc[st.session_state.veriler["personel"] == p_name, "nakit_ft_tutari_top"] +
-                st.session_state.veriler.loc[st.session_state.veriler["personel"] == p_name, "nakit_odeme_tutari_top"] -
+            st.session_state.hesap_verileri.loc[st.session_state.hesap_verileri["personel"] == p_name, "banka"] = b_val
+            st.session_state.hesap_verileri.loc[st.session_state.hesap_verileri["personel"] == p_name, "toplam_tahsilat"] = (
+                st.session_state.hesap_verileri.loc[st.session_state.hesap_verileri["personel"] == p_name, "nakit_ft_tutari_top"] +
+                st.session_state.hesap_verileri.loc[st.session_state.hesap_verileri["personel"] == p_name, "nakit_odeme_tutari_top"] -
                 b_val
             )
         st.rerun()
