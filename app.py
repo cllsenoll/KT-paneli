@@ -10,8 +10,8 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- MOCK DATA / ÖRNEK VERİ SETİ (Gerçek veri kaynağınıza göre güncelleyebilirsiniz) ---
-if "df" not in st.get_initial_params():
+# --- MOCK DATA / ÖRNEK VERİ SETİ ---
+if "df" not in st.session_state:
     data = {
         "Kurye": ["Ahmet Yılmaz", "Mehmet Kaya", "Ayşe Demir", "Ali Can", "Fatma Şahin"],
         "Zimmet": [120, 140, 110, 95, 130],
@@ -22,7 +22,9 @@ if "df" not in st.get_initial_params():
         "Nakit": [450.0, 600.0, 300.0, 200.0, 500.0],
         "Kart": [1200.0, 1500.0, 950.0, 800.0, 1100.0]
     }
-    df = pd.DataFrame(data)
+    st.session_state["df"] = pd.DataFrame(data)
+
+df = st.session_state["df"]
 
 # Teslimat Oranı Hesaplama
 df["Teslimat_Orani"] = (df["Teslim"] / df["Zimmet"]) * 100
@@ -77,12 +79,12 @@ with tab_main:
 
     with chart_col1:
         st.subheader("🎯 Şube Genel Teslimat Performansı")
-        genel_başarı_oranı = (toplam_teslimat / toplam_zimmet) * 100 if toplam_zimmet > 0 else 0
+        genel_basari_orani = (toplam_teslimat / toplam_zimmet) * 100 if toplam_zimmet > 0 else 0
         
         # İbre (Gauge) Grafiği
         fig_gauge = go.Figure(go.Indicator(
             mode="gauge+number",
-            value=genel_başarı_oranı,
+            value=genel_basari_orani,
             number={'suffix': "%", 'font': {'size': 36}},
             gauge={
                 'axis': {'range': [0, 100]},
@@ -127,7 +129,6 @@ with tab_main:
             c_avatar, c_info, c_metrics, c_chart = st.columns([0.8, 2.2, 3.5, 2.5])
             
             with c_avatar:
-                # Profil Resmi / Avatarları
                 st.image(f"https://api.dicebear.com/7.x/bottts/svg?seed={row['Kurye']}", width=65)
 
             with c_info:
@@ -141,7 +142,6 @@ with tab_main:
                 m3.metric("Devir", row["Devir"])
 
             with c_chart:
-                # İsmin karşısında mini Çember Grafik (Teslimat Oranı)
                 fig_ring = go.Figure(go.Pie(
                     values=[row["Teslimat_Orani"], 100 - row["Teslimat_Orani"]],
                     hole=0.7,
