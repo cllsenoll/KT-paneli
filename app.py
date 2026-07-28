@@ -582,7 +582,7 @@ if uploaded_files:
                             if str(raw_p).lower() in ["nan", "", "none", "null", "toplam"]:
                                 continue
                             
-                            matched_p = match_personel_name(raw_p, str.session_state.personeller)
+                            matched_p = match_personel_name(raw_p, st.session_state.personeller)
                             if not matched_p:
                                 matched_p = re.sub(r'\s+', ' ', str(raw_p).strip()).upper()
 
