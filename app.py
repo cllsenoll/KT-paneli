@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import io
+import re
 
 # Güncel Görsel Bağlantısı
 LOGO_URL = "https://raw.githubusercontent.com/cllsenoll/KT-paneli/refs/heads/main/1000122774.png"
@@ -33,12 +34,50 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- Metin Normalleştirme ---
+# --- Metin Normalleştirme & Boşluk Temizliği ---
 def normalize_text(text):
-    text = str(text).strip().lower()
+    if not isinstance(text, str):
+        text = str(text) if text is not None else ""
+    # Aradaki birden fazla boşluğu tek boşluğa düşür ve kenar boşluklarını sil
+    text = re.sub(r'\s+', ' ', text.strip()).lower()
     text = text.replace('ı', 'i').replace('ğ', 'g').replace('ü', 'u').replace('ş', 's').replace('ö', 'o').replace('ç', 'c')
     text = text.replace('İ', 'i').replace('Ğ', 'g').replace('Ü', 'u').replace('Ş', 's').replace('Ö', 'o').replace('Ç', 'c')
     return text
+
+# --- İLK 3 HARF BAZLI EŞLEŞTİRME ANAHTARI ---
+def get_name_key(raw_name):
+    """
+    İsmin ilk 3 harfi ve soyismin (son kelimenin) ilk 3 harfini alarak anahtar oluşturur.
+    Örn: "AHMET   YILMAZ" -> "ahm_yil"
+    Örn: "Ahmet Yilmaz"   -> "ahm_yil"
+    """
+    norm = normalize_text(raw_name)
+    if not norm:
+        return ""
+    
+    parts = norm.split(' ')
+    if len(parts) == 1:
+        return parts[0][:3]
+    
+    first_part = parts[0][:3]
+    last_part = parts[-1][:3]
+    return f"{first_part}_{last_part}"
+
+# --- ESNEK PERSONEL EŞLEŞTİRME FONKSİYONU ---
+def match_personel_name(raw_name, existing_list):
+    if pd.isna(raw_name) or str(raw_name).strip().lower() in ["nan", "none", "null", "toplam", ""]:
+        return ""
+        
+    cleaned_raw = re.sub(r'\s+', ' ', str(raw_name).strip()).upper()
+    raw_key = get_name_key(cleaned_raw)
+    
+    # Mevcut personel listesindeki isimlerle İlk 3 Harf anahtarını karşılaştır
+    for p in existing_list:
+        p_key = get_name_key(p)
+        if raw_key and p_key and raw_key == p_key:
+            return p  # Listedeki kayıtlı ismi döndür
+            
+    return cleaned_raw
 
 # --- FATURA BORCU / TUTAR / SAYI DÖNÜŞTÜRÜCÜ ---
 def parse_numeric_val(val):
@@ -101,13 +140,16 @@ with st.sidebar:
     yeni_personel = st.text_input("Yeni Personel Adı Soyadı:")
     if st.button("➕ Personel Ekle"):
         if yeni_personel.strip():
-            yeni_p_upper = yeni_personel.strip().upper()
-            if yeni_p_upper not in st.session_state.personeller:
-                st.session_state.personeller.append(yeni_p_upper)
-                st.success(f"{yeni_p_upper} eklendi!")
+            yeni_p_formatted = re.sub(r'\s+', ' ', yeni_personel.strip()).upper()
+            
+            # Eklenecek personel ismi mevcut listedeki biriyle anahtar bazlı eşleşiyor mu?
+            matched = match_personel_name(yeni_p_formatted, st.session_state.personeller)
+            if matched not in st.session_state.personeller:
+                st.session_state.personeller.append(yeni_p_formatted)
+                st.success(f"{yeni_p_formatted} eklendi!")
                 st.rerun()
             else:
-                st.warning("Bu personel zaten listede var.")
+                st.warning(f"Bu personel ({matched}) zaten listede mevcut.")
         else:
             st.error("Lütfen geçerli bir isim girin.")
 
@@ -286,14 +328,6 @@ def generate_pdf_bytes(df_input, personel_adi=""):
     plt.close(fig)
     return buf.getvalue()
 
-# Esnek Personel Adı Eşleştirme Fonksiyonu
-def match_personel_name(raw_name, existing_list):
-    norm_raw = normalize_text(raw_name)
-    for p in existing_list:
-        if normalize_text(p) == norm_raw:
-            return p
-    return str(raw_name).strip().upper()
-
 # ==========================================
 # 📁 ÇOKLU EXCEL DOSYASI İLE OTOMATİK VERİ İŞLEME
 # ==========================================
@@ -416,7 +450,9 @@ if uploaded_files:
                                 continue
 
                             matched_p = match_personel_name(raw_p, st.session_state.personeller)
-                            
+                            if not matched_p:
+                                continue
+
                             z_val = int(parse_numeric_val(row[col_map["summary_zimmet"]])) if "summary_zimmet" in col_map else 0
                             t_val = int(parse_numeric_val(row[col_map["summary_teslim"]])) if "summary_teslim" in col_map else 0
                             b_val = int(parse_numeric_val(row[col_map["summary_bekleyen"]])) if "summary_bekleyen" in col_map else (z_val - t_val if z_val >= t_val else 0)
@@ -469,6 +505,8 @@ if uploaded_files:
                                 continue
                             
                             matched_p = match_personel_name(raw_p, st.session_state.personeller)
+                            if not matched_p:
+                                continue
                             
                             p_df = df[df["zimmet_personel"] == raw_p]
                             zimmet_sayisi = len(p_df)
@@ -637,7 +675,7 @@ if not df_veriler.empty:
 st.markdown("---")
 
 # ==========================================
-# 3. YENİ EKLENEN BÖLÜM: PERSONEL HESAP ALIMI EKRANI
+# 3. PERSONEL HESAP ALIMI EKRANI
 # ==========================================
 st.subheader("💵 Personel Hesap Alımı Ekranı")
 
