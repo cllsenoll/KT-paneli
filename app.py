@@ -733,7 +733,7 @@ if not df_veriler.empty:
 st.markdown("---")
 
 # ==========================================
-# 3. PERSONEL HESAP ALIMI EKRANI (GÜNCELLENDİ)
+# 3. PERSONEL HESAP ALIMI EKRANI (DÜZELTİLMİŞ KASA MANTIĞI)
 # ==========================================
 st.subheader("💵 Personel Hesap Alımı Ekranı")
 
@@ -762,16 +762,17 @@ if not df_hesap_verileri.empty:
         )
         st.session_state.ana_kasa_val = ana_kasa_giris
 
-    fark = ana_kasa_giris - genel_toplam_tahsilat
-
     with col_kasa2:
         st.markdown("🔒 **KASA DENGESİ**")
-        if fark >= 0:
+        # DÜZELTİLEN MANTIK: Ana Kasa > Şube Tahsilat ise AÇIK (Kırmızı), değilse TAM (Yeşil)
+        if ana_kasa_giris > genel_toplam_tahsilat:
+            fark = ana_kasa_giris - genel_toplam_tahsilat
             st.metric("KASA Tutar Farkı", f"{fark:,.2f} ₺")
-            st.markdown("🟢 <h3 style='color:#10B981; margin-0;'>TAM</h3>", unsafe_allow_html=True)
+            st.markdown(f"🔴 <h3 style='color:#EF4444; margin:0;'>AÇIK: {fark:,.2f} ₺</h3>", unsafe_allow_html=True)
         else:
+            fark = genel_toplam_tahsilat - ana_kasa_giris
             st.metric("KASA Tutar Farkı", f"{fark:,.2f} ₺")
-            st.markdown(f"🔴 <h3 style='color:#EF4444; margin-0;'>AÇIK: {abs(fark):,.2f} ₺</h3>", unsafe_allow_html=True)
+            st.markdown(f"🟢 <h3 style='color:#10B981; margin:0;'>TAM: {fark:,.2f} ₺</h3>", unsafe_allow_html=True)
 
     st.markdown("#### 📋 Tüm Personellerin Hesap Alım Özeti Tablosu")
     st.caption("💡 **Not:** Yalnızca **Banka** sütununa manuel tutar girebilirsiniz. Toplam Tahsilat = (Nakit Ft. + Nakit Ödeme) - Banka şeklinde otomatik hesaplanır.")
