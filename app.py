@@ -108,8 +108,12 @@ if "personeller" not in st.session_state:
 
 if "veriler" not in st.session_state:
     st.session_state.veriler = pd.DataFrame(columns=[
-        "personel", "zimmet", "teslim_edildi", "teslim_edilmedi_bekletiliyor", "sms", "imza", "ks", "nakit", "kart",
-        "nakit_ft_tutari_top", "nakit_odeme_tutari_top", "toplam_tahsilat"
+        "personel", "zimmet", "teslim_edildi", "teslim_edilmedi_bekletiliyor", "sms", "imza", "ks", "nakit", "kart"
+    ])
+
+if "hesap_alim_listesi" not in st.session_state:
+    st.session_state.hesap_alim_listesi = pd.DataFrame(columns=[
+        "personel", "nakit_ft_tutari_top", "nakit_odeme_tutari_top", "toplam_tahsilat"
     ])
 
 if "tahsilatlar" not in st.session_state:
@@ -333,6 +337,7 @@ uploaded_files = st.file_uploader(
 if uploaded_files:
     tum_f4_listesi = []
     kullanici_ozet_listesi = []
+    hesap_alim_temp_listesi = []
 
     for uploaded_file in uploaded_files:
         try:
@@ -424,14 +429,15 @@ if uploaded_files:
                     elif any(k in norm_c for k in ["odeme tipi", "odeme türü", "tahsilat tipi", "odeme karsi"]):
                         col_map["odeme_tipi"] = c
 
-                # --- SADECE F4 ÖDEME LİSTESİ DOSYASI MI TESPİT ET (DOSYA ADI VEYA İÇERİK) ---
+                # --- KATEGORİ TESPİTLERİ ---
                 is_pure_f4_file = ("f4" in file_name_lower or "f4 odeme" in file_name_lower) and "summary_zimmet" not in col_map
+                is_hesap_alim_file = ("hesap" in file_name_lower or "hesap alimi" in file_name_lower or "nakit_ft_tutari_top" in col_map) and "summary_zimmet" not in col_map and "durum" not in col_map
 
                 if "zimmet_personel" in col_map:
                     df = df_raw.copy()
                     df["zimmet_personel"] = df[col_map["zimmet_personel"]].astype(str).str.strip()
 
-                    # AKIŞ A: YÜKLENEN DOSYA SADECE F4 ÖDEME LİSTESİ İSE
+                    # AKIŞ 1: SADECE F4 ÖDEME LİSTESİ DOSYASI
                     if is_pure_f4_file:
                         df["musteri_adi"] = df[col_map["musteri_adi"]].astype(str).str.strip() if "musteri_adi" in col_map else "Müşteri Belirtilmedi"
                         
@@ -469,9 +475,34 @@ if uploaded_files:
                             if matched_p not in st.session_state.personeller:
                                 st.session_state.personeller.append(matched_p)
 
-                    # AKIŞ B: ÖZET / PERFORMANS / KARGO DAĞITIM DOSYASI İSE
+                    # AKIŞ 2: SADECE PERSONEL HESAP ALIMI DOSYASI
+                    elif is_hesap_alim_file:
+                        for _, row in df.iterrows():
+                            raw_p = row["zimmet_personel"]
+                            if str(raw_p).lower() in ["nan", "", "none", "null", "toplam"]:
+                                continue
+
+                            matched_p = match_personel_name(raw_p, st.session_state.personeller)
+                            if not matched_p:
+                                matched_p = re.sub(r'\s+', ' ', str(raw_p).strip()).upper()
+
+                            nft_val = parse_numeric_val(row[col_map["nakit_ft_tutari_top"]]) if "nakit_ft_tutari_top" in col_map else 0.0
+                            nod_val = parse_numeric_val(row[col_map["nakit_odeme_tutari_top"]]) if "nakit_odeme_tutari_top" in col_map else 0.0
+                            toplam_tahsilat_val = nft_val + nod_val
+
+                            hesap_alim_temp_listesi.append({
+                                "personel": matched_p,
+                                "nakit_ft_tutari_top": nft_val,
+                                "nakit_odeme_tutari_top": nod_val,
+                                "toplam_tahsilat": toplam_tahsilat_val
+                            })
+
+                            if matched_p not in st.session_state.personeller:
+                                st.session_state.personeller.append(matched_p)
+
+                    # AKIŞ 3: PERFORMANS / AT ZİMMET / KARGO DAĞITIM DOSYASI
                     else:
-                        is_summary_excel = "summary_zimmet" in col_map or ("summary_teslim" in col_map and "durum" not in col_map) or ("nakit_ft_tutari_top" in col_map or "nakit_odeme_tutari_top" in col_map)
+                        is_summary_excel = "summary_zimmet" in col_map or ("summary_teslim" in col_map and "durum" not in col_map)
 
                         if is_summary_excel:
                             for _, row in df.iterrows():
@@ -487,10 +518,6 @@ if uploaded_files:
                                 t_val = int(parse_numeric_val(row[col_map["summary_teslim"]])) if "summary_teslim" in col_map else 0
                                 b_val = int(parse_numeric_val(row[col_map["summary_bekleyen"]])) if "summary_bekleyen" in col_map else (z_val - t_val if z_val >= t_val else 0)
 
-                                nft_val = parse_numeric_val(row[col_map["nakit_ft_tutari_top"]]) if "nakit_ft_tutari_top" in col_map else 0.0
-                                nod_val = parse_numeric_val(row[col_map["nakit_odeme_tutari_top"]]) if "nakit_odeme_tutari_top" in col_map else 0.0
-                                toplam_tahsilat_val = nft_val + nod_val
-
                                 kullanici_ozet_listesi.append({
                                     "personel": matched_p,
                                     "zimmet": z_val,
@@ -500,10 +527,7 @@ if uploaded_files:
                                     "imza": 0,
                                     "ks": 0,
                                     "nakit": 0.0,
-                                    "kart": 0.0,
-                                    "nakit_ft_tutari_top": nft_val,
-                                    "nakit_odeme_tutari_top": nod_val,
-                                    "toplam_tahsilat": toplam_tahsilat_val
+                                    "kart": 0.0
                                 })
 
                                 if matched_p not in st.session_state.personeller:
@@ -514,12 +538,6 @@ if uploaded_files:
                             df["kanal"] = df[col_map["kanal"]].astype(str).str.strip() if "kanal" in col_map else ""
                             df["musteri_adi"] = df[col_map["musteri_adi"]].astype(str).str.strip() if "musteri_adi" in col_map else ""
                             df["odeme_tipi"] = df[col_map["odeme_tipi"]].astype(str).str.strip() if "odeme_tipi" in col_map else ""
-
-                            if "aciklama" in col_map:
-                                df["aciklama"] = df[col_map["aciklama"]].astype(str).str.strip()
-                                df["aciklama"] = df["aciklama"].apply(lambda x: "" if str(x).lower() in ["nan", "none", "null"] else str(x))
-                            else:
-                                df["aciklama"] = ""
 
                             if "fatura_borcu" in col_map:
                                 df["fatura_borcu"] = df[col_map["fatura_borcu"]].apply(parse_numeric_val)
@@ -579,10 +597,7 @@ if uploaded_files:
                                     "imza": imza_sayisi,
                                     "ks": ks_sayisi,
                                     "nakit": auto_nakit,
-                                    "kart": auto_kart,
-                                    "nakit_ft_tutari_top": 0.0,
-                                    "nakit_odeme_tutari_top": 0.0,
-                                    "toplam_tahsilat": auto_nakit
+                                    "kart": auto_kart
                                 })
 
                                 if matched_p not in st.session_state.personeller:
@@ -595,13 +610,16 @@ if uploaded_files:
         st.session_state.veriler = pd.DataFrame(kullanici_ozet_listesi)
     if tum_f4_listesi:
         st.session_state.tahsilatlar = pd.DataFrame(tum_f4_listesi)
+    if hesap_alim_temp_listesi:
+        st.session_state.hesap_alim_listesi = pd.DataFrame(hesap_alim_temp_listesi)
     
-    st.success("✅ Yüklenen dosyalar başarıyla kategorize edildi ve ilgili alanlara işlendi!")
+    st.success("✅ Yüklenen dosyalar ayrıştırıldı ve ilgili bölümlere başarıyla aktarıldı!")
 
 st.markdown("---")
 
 df_veriler = st.session_state.veriler
 df_tahsilat = st.session_state.tahsilatlar
+df_hesap_alim = st.session_state.hesap_alim_listesi
 personel_listesi = st.session_state.personeller
 
 # ==========================================
@@ -690,12 +708,12 @@ if not df_veriler.empty:
 st.markdown("---")
 
 # ==========================================
-# 3. PERSONEL HESAP ALIMI EKRANI
+# 3. PERSONEL HESAP ALIMI EKRANI (MÜSTAKİL BÖLÜM)
 # ==========================================
 st.subheader("💵 Personel Hesap Alımı Ekranı")
 
-if not df_veriler.empty and "toplam_tahsilat" in df_veriler.columns:
-    df_hesap = df_veriler.groupby("personel")[["nakit_ft_tutari_top", "nakit_odeme_tutari_top", "toplam_tahsilat"]].sum().reset_index()
+if not df_hesap_alim.empty:
+    df_hesap = df_hesap_alim.groupby("personel")[["nakit_ft_tutari_top", "nakit_odeme_tutari_top", "toplam_tahsilat"]].sum().reset_index()
     
     genel_toplam_tahsilat = df_hesap["toplam_tahsilat"].sum()
     st.info(f"💵 **Şube Genel Toplam Nakit Tahsilat:** {genel_toplam_tahsilat:,.2f} ₺")
@@ -716,13 +734,15 @@ if not df_veriler.empty and "toplam_tahsilat" in df_veriler.columns:
             h_col1.metric("Nakit Ft. Tutarı Top.", f"{nft:,.2f} ₺")
             h_col2.metric("Nakit Ödeme Tutarı Topl.", f"{nod:,.2f} ₺")
             h_col3.metric("Toplam Tahsilat", f"{top_tah:,.2f} ₺")
+        else:
+            st.warning(f"⚠️ {hesap_p_secim} için Hesap Alımı kaydı bulunamadı.")
 
         st.markdown("#### 📋 Tüm Personellerin Hesap Alım Özeti Tablosu")
         df_hesap_goster = df_hesap.copy()
         df_hesap_goster.columns = ["Personel", "Nakit Ft. Tutarı Top. (₺)", "Nakit Ödeme Tutarı Topl. (₺)", "Toplam Tahsilat (₺)"]
         st.dataframe(df_hesap_goster, use_container_width=True)
 else:
-    st.info("Hesap Alımı verilerini görmek için lütfen içerisinde 'Nakit Ft. Tutarı Top' ve 'Nakit Ödeme Tutarı Topl.' alanları bulunan Excel dosyanızı yükleyin.")
+    st.info("Hesap Alımı verilerini görmek için lütfen içerisinde 'Nakit Ft. Tutarı Top' ve 'Nakit Ödeme Tutarı Topl.' alanları bulunan Hesap Alımı Excel dosyanızı yükleyin.")
 
 st.markdown("---")
 
