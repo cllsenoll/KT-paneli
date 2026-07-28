@@ -8,6 +8,52 @@ import re
 # Güncel Görsel Bağlantısı
 LOGO_URL = "https://raw.githubusercontent.com/cllsenoll/KT-paneli/refs/heads/main/1000122774.png"
 
+# ==============================================================================
+# 🎯 PERSONEL - MÜŞTERİ EŞLEŞTİRME SÖZLÜĞÜ (GÜNCELLENMİŞ TAM LİSTE)
+# ==============================================================================
+PERSONEL_MUSTERI_HARITASI = {
+    "ALATTİN CEBECİ": [
+        "AKSUN AĞAÇ AMBALAJ KERESTE SAN. TİC.LTD.ŞTİ",
+        "ARTEA DIŞ TİCARET MAKİNA SANAYİ LİMİTED ŞİRKETİ",
+        "BAYAGRO TARIM İLAÇLARI SANAYİ VE TİCARETLTD. ŞTİ.",
+        "BEREKET İLAÇ KOZMETİK SANAYİ VE TİCARET ANONİM ŞİRKETİ",
+        "BURKON MOBİLYA SANAYİ VE TİCARET LİMİTED ŞİRKETİ",
+        "ACH DIŞ TİCARET SANAYİ VE TİCARET ANONİM ŞİRKETİ",
+        "DEMİRCİOĞLU ŞASE ENDÜSTRİYEL YAĞ OTOMOTİV TEKSTİL GIDA İNŞAAT SANAYİ VE TİCARET A.Ş.",
+        "FLY MOBİLYA SANAYİ VE TİCARET ANONİM ŞİRKETİ",
+        "KCL LOJİSTİK OTOMOTİV SANAYİ TİCARET LİMİTED ŞİRKETİ",
+        "KOLİSAN AMBALAJ SANAYİ VE TİCARET A.Ş.",
+        "M-BEND METAL ÇELİK MAKİNA İNŞAAT SANAYİ VE TİCARET LİMİTED ŞİRKETİ",
+        "MAVİFORM METAL KALIPFİKSTÜR VE APARAT SAN.VE TİC.LTD",
+        "MERZE MOBİLYA TASARIM İNŞAAT SANAYİ TİCARET ANONİM ŞİRKETİ"
+    ],
+    "HASAN SAĞLAM": [
+        "ARMENDUS OPERATÖR KOL VE PANO SİSTEMLERİ SANAYİ VE TİCARET ANONİM ŞİRKETİ",
+        "BİLEKLER İNŞAAT MAKİNALARI SANAYİ VETİCARET LTD.ŞTİ.",
+        "DİGİTORİUM ELEKTRONİK TEKNOLOJİLERİ ANONİM ŞİRKETİ",
+        "ELECTRA GRUP MÜHENDİSLİK ELEKTRİK TAAHHÜT MEKANİK PANO İMALAT İTHALAT İHRACAT SANAYİ VE TİCARET ANONİM ŞİRKETİ",
+        "ELECTRA KABLOSİSTEMLERİ SANAYİ VE TİCARET LİMİTED ŞİRKETİ",
+        "ELECTRA PROJE ELEKTRİK MÜHENDİSLİK TAAHHÜT İNŞAAT ARAÇ KİRALAMA İTHALAT İHRACAT VE TİCARET ANONİM ŞİRKETİ",
+        "F.S.K.MAKİNE İMALATTAAH.VE GIDA TEKN.SAN.T.LTD.ŞTİ.",
+        "IPM GALVANO YÜZEY KAPLAMA SANAYİ VE TİCARET ANONİM ŞİRKETİ",
+        "LİGNUM AĞAÇ MAKİNELERİ SANAYİ TİCARET LİMİTED ŞİRKETİ",
+        "TURKAUTO MOTORLU ARAÇLAR SANAYİ VE TİCARET LİMİTED ŞİRKETİ.",
+        "VİYA OTOMOTİV CAM TURİZM DENİZCİLİK SANAYİ VE TİCARET LTD. ŞTİ."
+    ],
+    "AHMET BERKAN ÖKSÜZ": [
+        "KÜBRA AYDEMİR",
+        "SERKAN KUYUMCU"
+    ],
+    "SUAT ARI": [
+        "TUBA ÖZCAN",
+        "YERLİYURT MARİN DENİZ ARAÇ KAB.TUR.SVE P.LTD.ŞTİ.",
+        "ÖZBAYRAK KIZAK KORUMA SİSTEMLERİ ENDÜSTRİ MAKİNE SANAYİ VE TİCARET ANONİM ŞİRKETİ"
+    ],
+    "MEHMET KAYMAZ": [
+        "MUSA TEKNOBİLİŞİM BURSA"
+    ]
+}
+
 # Sayfa Yapılandırması
 st.set_page_config(
     page_title="Personel Performans & F4 Ödeme Paneli", 
@@ -27,8 +73,12 @@ st.markdown("""
         font-weight: bold;
     }
     @media print {
-        .stSidebar, .stButton, header, footer {
+        .stSidebar, .stButton, header, footer, .no-print {
             display: none !important;
+        }
+        .print-area {
+            display: block !important;
+            width: 100% !important;
         }
     }
     </style>
@@ -72,7 +122,20 @@ def match_personel_name(raw_name, existing_list):
             
     return cleaned_raw
 
-# --- FATURA BORCU / TUTAR / SAYI DÖNÜŞTÜRÜCÜ ---
+# --- MÜŞTERİ ADINDAN OTOMATİK PERSONEL BULMA FONKSİYONU ---
+def find_personel_by_customer(customer_name, mapping):
+    norm_cust = normalize_text(customer_name)
+    if not norm_cust:
+        return None
+        
+    for personel, musteriler in mapping.items():
+        for m in musteriler:
+            norm_m = normalize_text(m)
+            if norm_m in norm_cust or norm_cust in norm_m:
+                return personel
+    return None
+
+# --- FATURA BORCU / TUTAR DÖNÜŞTÜRÜCÜ ---
 def parse_numeric_val(val):
     if pd.isna(val) or val is None:
         return 0.0
@@ -98,13 +161,7 @@ def parse_numeric_val(val):
 
 # --- OTURUM BAŞLATMA ---
 if "personeller" not in st.session_state:
-    st.session_state.personeller = [
-        "ALATTİN CEBECİ",
-        "SUAT ARI",
-        "HASAN SAĞLAM",
-        "MEHMET KAYMAZ",
-        "AHMET BERKAN ÖKSÜZ"
-    ]
+    st.session_state.personeller = list(PERSONEL_MUSTERI_HARITASI.keys())
 
 if "veriler" not in st.session_state:
     st.session_state.veriler = pd.DataFrame(columns=[
@@ -137,6 +194,8 @@ with st.sidebar:
             matched = match_personel_name(yeni_p_formatted, st.session_state.personeller)
             if matched not in st.session_state.personeller:
                 st.session_state.personeller.append(yeni_p_formatted)
+                if yeni_p_formatted not in PERSONEL_MUSTERI_HARITASI:
+                    PERSONEL_MUSTERI_HARITASI[yeni_p_formatted] = []
                 st.success(f"{yeni_p_formatted} eklendi!")
                 st.rerun()
             else:
@@ -152,7 +211,7 @@ with st.sidebar:
             st.success(f"{silinecek_personel} silindi!")
             st.rerun()
 
-# 1. İbre Grafiği (Şube Teslim Oranı)
+# --- GRAFİK FONKSİYONLARI ---
 def ibre_grafik_ciz(teslim_edildi, bekletiliyor, zimmet, baslik_metni, alt_metin=""):
     basari_orani = (teslim_edildi / zimmet * 100) if zimmet > 0 else 0
 
@@ -179,11 +238,8 @@ def ibre_grafik_ciz(teslim_edildi, bekletiliyor, zimmet, baslik_metni, alt_metin
 
     return fig
 
-# 2. Pasta Grafiği (Genel Kargo Teslimat Kanalları)
 def pasta_grafigi_ciz(sms, imza, ks):
-    etiketler = []
-    degerler = []
-
+    etiketler, degerler = [], []
     if sms > 0:
         etiketler.append(f"SMS\n({sms})")
         degerler.append(sms)
@@ -194,26 +250,19 @@ def pasta_grafigi_ciz(sms, imza, ks):
         etiketler.append(f"KS / Diğer\n({ks})")
         degerler.append(ks)
 
-    if not degerler:
-        fig, ax = plt.subplots(figsize=(4, 3))
-        fig.patch.set_facecolor('#0E1117')
-        ax.set_facecolor('#0E1117')
-        ax.text(0.5, 0.5, "Kanal Verisi Yok", color="white", ha="center", va="center")
-        ax.axis("off")
-        return fig
-
     fig, ax = plt.subplots(figsize=(4, 3))
     fig.patch.set_facecolor('#0E1117')
     ax.set_facecolor('#0E1117')
 
+    if not degerler:
+        ax.text(0.5, 0.5, "Kanal Verisi Yok", color="white", ha="center", va="center")
+        ax.axis("off")
+        return fig
+
     renkler = ['#3B82F6', '#10B981', '#F59E0B']
     wedges, texts, autotexts = ax.pie(
-        degerler, 
-        labels=etiketler, 
-        autopct='%1.1f%%', 
-        startangle=140, 
-        colors=renkler[:len(degerler)],
-        textprops=dict(color="white", fontsize=9)
+        degerler, labels=etiketler, autopct='%1.1f%%', startangle=140, 
+        colors=renkler[:len(degerler)], textprops=dict(color="white", fontsize=9)
     )
 
     for autotext in autotexts:
@@ -223,7 +272,6 @@ def pasta_grafigi_ciz(sms, imza, ks):
     ax.set_title("Kargo Teslimat Kanalları Dağılımı", color="white", fontsize=11, fontweight="bold", pad=10)
     return fig
 
-# 3. Personel Özel Teslimat Oranı Pasta Grafiği
 def personel_pasta_grafigi_ciz(personel_adi, teslim_edildi, bekletiliyor):
     fig, ax = plt.subplots(figsize=(4, 3.2))
     fig.patch.set_facecolor('#0E1117')
@@ -254,14 +302,12 @@ def personel_pasta_grafigi_ciz(personel_adi, teslim_edildi, bekletiliyor):
     ax.set_title(f"{personel_adi}\nTeslimat Durum Dağılımı", color="white", fontsize=10, fontweight="bold", pad=10)
     return fig
 
-# 4. Sütun Grafiği (Personel Bazlı Teslim / Bekleyen)
 def sutun_grafigi_ciz(df_veriler):
     fig, ax = plt.subplots(figsize=(7, 3.5))
     fig.patch.set_facecolor('#0E1117')
     ax.set_facecolor('#0E1117')
 
     df_p = df_veriler.groupby("personel")[["teslim_edildi", "teslim_edilmedi_bekletiliyor"]].sum().reset_index()
-
     x = np.arange(len(df_p))
     width = 0.35
 
@@ -279,16 +325,6 @@ def sutun_grafigi_ciz(df_veriler):
     ax.spines['right'].set_visible(False)
     ax.spines['bottom'].set_color('#374151')
     ax.spines['left'].set_color('#374151')
-
-    for rect in rects1:
-        h = rect.get_height()
-        if h > 0:
-            ax.annotate(f'{int(h)}', xy=(rect.get_x() + rect.get_width() / 2, h), xytext=(0, 3), textcoords="offset points", ha='center', va='bottom', color='white', fontsize=8)
-
-    for rect in rects2:
-        h = rect.get_height()
-        if h > 0:
-            ax.annotate(f'{int(h)}', xy=(rect.get_x() + rect.get_width() / 2, h), xytext=(0, 3), textcoords="offset points", ha='center', va='bottom', color='white', fontsize=8)
 
     plt.tight_layout()
     return fig
@@ -366,7 +402,7 @@ if uploaded_files:
             if df_raw is not None and not df_raw.empty:
                 col_map = {}
 
-                # 1. FATURA BORCU SÜTUNU TESPİTİ
+                # FATURA BORCU SÜTUN TESPİTİ
                 fatura_col = None
                 for c in df_raw.columns:
                     norm_c = normalize_text(c)
@@ -398,10 +434,8 @@ if uploaded_files:
                     elif "nakit odeme" in norm_c and "tutari" in norm_c:
                         col_map["nakit_odeme_tutari_top"] = c
 
-                # 2. DİĞER SÜTUNLARIN TESPİTİ
                 for c in df_raw.columns:
                     norm_c = normalize_text(c)
-                    
                     if any(k in norm_c for k in ["zimmet personel", "at zimmet", "kurye", "dagitici", "dağıtıcı", "personel", "kullanici"]):
                         if "zimmet_personel" not in col_map:
                             col_map["zimmet_personel"] = c
@@ -424,41 +458,39 @@ if uploaded_files:
                     elif any(k in norm_c for k in ["odeme tipi", "odeme türü", "tahsilat tipi", "odeme karsi"]):
                         col_map["odeme_tipi"] = c
 
-                # --- SADECE F4 ÖDEME LİSTESİ DOSYASI MI TESPİT ET (DOSYA ADI VEYA İÇERİK) ---
                 is_pure_f4_file = ("f4" in file_name_lower or "f4 odeme" in file_name_lower) and "summary_zimmet" not in col_map
+                df = df_raw.copy()
 
-                if "zimmet_personel" in col_map:
-                    df = df_raw.copy()
-                    df["zimmet_personel"] = df[col_map["zimmet_personel"]].astype(str).str.strip()
+                # AKIŞ A: F4 ÖDEME LİSTESİ İŞLEME
+                if is_pure_f4_file or ("musteri_adi" in col_map and "durum" not in col_map):
+                    df["musteri_adi"] = df[col_map["musteri_adi"]].astype(str).str.strip() if "musteri_adi" in col_map else "Müşteri Belirtilmedi"
+                    
+                    if "aciklama" in col_map:
+                        df["aciklama"] = df[col_map["aciklama"]].astype(str).str.strip()
+                        df["aciklama"] = df["aciklama"].apply(lambda x: "" if str(x).lower() in ["nan", "none", "null"] else str(x))
+                    else:
+                        df["aciklama"] = ""
 
-                    # AKIŞ A: YÜKLENEN DOSYA SADECE F4 ÖDEME LİSTESİ İSE
-                    if is_pure_f4_file:
-                        df["musteri_adi"] = df[col_map["musteri_adi"]].astype(str).str.strip() if "musteri_adi" in col_map else "Müşteri Belirtilmedi"
+                    if "fatura_borcu" in col_map:
+                        df["fatura_borcu"] = df[col_map["fatura_borcu"]].apply(parse_numeric_val)
+                    else:
+                        df["fatura_borcu"] = 0.0
+
+                    for _, row in df.iterrows():
+                        musteri_val = str(row["musteri_adi"]) if str(row["musteri_adi"]).lower() not in ["nan", "none", ""] else "Müşteri Belirtilmedi"
+                        borc_val = float(row["fatura_borcu"])
+                        aciklama_val = str(row["aciklama"])
+
+                        # Önce Müşteri Adından Otomatik Personel Tespiti Yap
+                        matched_p = find_personel_by_customer(musteri_val, PERSONEL_MUSTERI_HARITASI)
                         
-                        if "aciklama" in col_map:
-                            df["aciklama"] = df[col_map["aciklama"]].astype(str).str.strip()
-                            df["aciklama"] = df["aciklama"].apply(lambda x: "" if str(x).lower() in ["nan", "none", "null"] else str(x))
-                        else:
-                            df["aciklama"] = ""
+                        # Haritada Bulunamadıysa Excel Sütunundaki Personel Bilgisine Bak
+                        if not matched_p and "zimmet_personel" in col_map:
+                            raw_p = row[col_map["zimmet_personel"]]
+                            if str(raw_p).lower() not in ["nan", "", "none", "null", "toplam"]:
+                                matched_p = match_personel_name(raw_p, st.session_state.personeller)
 
-                        if "fatura_borcu" in col_map:
-                            df["fatura_borcu"] = df[col_map["fatura_borcu"]].apply(parse_numeric_val)
-                        else:
-                            df["fatura_borcu"] = 0.0
-
-                        for _, row in df.iterrows():
-                            raw_p = row["zimmet_personel"]
-                            if str(raw_p).lower() in ["nan", "", "none", "null", "toplam"]:
-                                continue
-                            
-                            matched_p = match_personel_name(raw_p, st.session_state.personeller)
-                            if not matched_p:
-                                matched_p = re.sub(r'\s+', ' ', str(raw_p).strip()).upper()
-
-                            borc_val = float(row["fatura_borcu"])
-                            musteri_val = str(row["musteri_adi"]) if str(row["musteri_adi"]).lower() not in ["nan", "none", ""] else "Müşteri Belirtilmedi"
-                            aciklama_val = str(row["aciklama"])
-
+                        if matched_p:
                             tum_f4_listesi.append({
                                 "Personel": matched_p,
                                 "Müşteri Adı": musteri_val,
@@ -469,124 +501,99 @@ if uploaded_files:
                             if matched_p not in st.session_state.personeller:
                                 st.session_state.personeller.append(matched_p)
 
-                    # AKIŞ B: ÖZET / PERFORMANS / KARGO DAĞITIM DOSYASI İSE
+                # AKIŞ B: ÖZET / PERFORMANS / HESAP ALIMI DOSYASI İŞLEME
+                elif "zimmet_personel" in col_map:
+                    df["zimmet_personel"] = df[col_map["zimmet_personel"]].astype(str).str.strip()
+                    is_summary_excel = "summary_zimmet" in col_map or ("summary_teslim" in col_map and "durum" not in col_map) or ("nakit_ft_tutari_top" in col_map or "nakit_odeme_tutari_top" in col_map)
+
+                    if is_summary_excel:
+                        for _, row in df.iterrows():
+                            raw_p = row["zimmet_personel"]
+                            if str(raw_p).lower() in ["nan", "", "none", "null", "toplam"]:
+                                continue
+
+                            matched_p = match_personel_name(raw_p, st.session_state.personeller)
+                            if not matched_p:
+                                matched_p = re.sub(r'\s+', ' ', str(raw_p).strip()).upper()
+
+                            z_val = int(parse_numeric_val(row[col_map["summary_zimmet"]])) if "summary_zimmet" in col_map else 0
+                            t_val = int(parse_numeric_val(row[col_map["summary_teslim"]])) if "summary_teslim" in col_map else 0
+                            b_val = int(parse_numeric_val(row[col_map["summary_bekleyen"]])) if "summary_bekleyen" in col_map else (z_val - t_val if z_val >= t_val else 0)
+
+                            nft_val = parse_numeric_val(row[col_map["nakit_ft_tutari_top"]]) if "nakit_ft_tutari_top" in col_map else 0.0
+                            nod_val = parse_numeric_val(row[col_map["nakit_odeme_tutari_top"]]) if "nakit_odeme_tutari_top" in col_map else 0.0
+                            toplam_tahsilat_val = nft_val + nod_val
+
+                            kullanici_ozet_listesi.append({
+                                "personel": matched_p,
+                                "zimmet": z_val,
+                                "teslim_edildi": t_val,
+                                "teslim_edilmedi_bekletiliyor": b_val,
+                                "sms": 0, "imza": 0, "ks": 0, "nakit": 0.0, "kart": 0.0,
+                                "nakit_ft_tutari_top": nft_val,
+                                "nakit_odeme_tutari_top": nod_val,
+                                "toplam_tahsilat": toplam_tahsilat_val
+                            })
+
+                            if matched_p not in st.session_state.personeller:
+                                st.session_state.personeller.append(matched_p)
                     else:
-                        is_summary_excel = "summary_zimmet" in col_map or ("summary_teslim" in col_map and "durum" not in col_map) or ("nakit_ft_tutari_top" in col_map or "nakit_odeme_tutari_top" in col_map)
+                        df["durum"] = df[col_map["durum"]].astype(str).str.strip() if "durum" in col_map else "Teslim Edildi"
+                        df["kanal"] = df[col_map["kanal"]].astype(str).str.strip() if "kanal" in col_map else ""
+                        df["odeme_tipi"] = df[col_map["odeme_tipi"]].astype(str).str.strip() if "odeme_tipi" in col_map else ""
 
-                        if is_summary_excel:
-                            for _, row in df.iterrows():
-                                raw_p = row["zimmet_personel"]
-                                if str(raw_p).lower() in ["nan", "", "none", "null", "toplam"]:
-                                    continue
+                        personeller = df["zimmet_personel"].unique()
+                        for raw_p in personeller:
+                            if str(raw_p).lower() in ["nan", "", "none", "null", "toplam"]:
+                                continue
+                            
+                            matched_p = match_personel_name(raw_p, st.session_state.personeller)
+                            if not matched_p:
+                                matched_p = re.sub(r'\s+', ' ', str(raw_p).strip()).upper()
 
-                                matched_p = match_personel_name(raw_p, st.session_state.personeller)
-                                if not matched_p:
-                                    continue
+                            p_df = df[df["zimmet_personel"] == raw_p]
+                            zimmet_sayisi = len(p_df)
+                            teslim_edildi_sayisi, teslim_edilmedi_bekletiliyor_sayisi = 0, 0
+                            sms_sayisi, imza_sayisi, ks_sayisi = 0, 0, 0
+                            auto_nakit, auto_kart = 0.0, 0.0
 
-                                z_val = int(parse_numeric_val(row[col_map["summary_zimmet"]])) if "summary_zimmet" in col_map else 0
-                                t_val = int(parse_numeric_val(row[col_map["summary_teslim"]])) if "summary_teslim" in col_map else 0
-                                b_val = int(parse_numeric_val(row[col_map["summary_bekleyen"]])) if "summary_bekleyen" in col_map else (z_val - t_val if z_val >= t_val else 0)
+                            for _, row in p_df.iterrows():
+                                norm_durum = normalize_text(row["durum"])
+                                is_teslim = any(k in norm_durum for k in ["teslim edildi", "teslimat yapildi", "teslim yapildi", "teslimdir"]) or norm_durum in ["teslim", ""]
+                                borc_val = parse_numeric_val(row[col_map["fatura_borcu"]]) if "fatura_borcu" in col_map else 0.0
+                                odeme_tipi_val = normalize_text(row["odeme_tipi"])
 
-                                nft_val = parse_numeric_val(row[col_map["nakit_ft_tutari_top"]]) if "nakit_ft_tutari_top" in col_map else 0.0
-                                nod_val = parse_numeric_val(row[col_map["nakit_odeme_tutari_top"]]) if "nakit_odeme_tutari_top" in col_map else 0.0
-                                toplam_tahsilat_val = nft_val + nod_val
+                                if is_teslim:
+                                    teslim_edildi_sayisi += 1
+                                    kanal_val = str(row["kanal"]).upper()
 
-                                kullanici_ozet_listesi.append({
-                                    "personel": matched_p,
-                                    "zimmet": z_val,
-                                    "teslim_edildi": t_val,
-                                    "teslim_edilmedi_bekletiliyor": b_val,
-                                    "sms": 0,
-                                    "imza": 0,
-                                    "ks": 0,
-                                    "nakit": 0.0,
-                                    "kart": 0.0,
-                                    "nakit_ft_tutari_top": nft_val,
-                                    "nakit_odeme_tutari_top": nod_val,
-                                    "toplam_tahsilat": toplam_tahsilat_val
-                                })
-
-                                if matched_p not in st.session_state.personeller:
-                                    st.session_state.personeller.append(matched_p)
-
-                        else:
-                            df["durum"] = df[col_map["durum"]].astype(str).str.strip() if "durum" in col_map else "Teslim Edildi"
-                            df["kanal"] = df[col_map["kanal"]].astype(str).str.strip() if "kanal" in col_map else ""
-                            df["musteri_adi"] = df[col_map["musteri_adi"]].astype(str).str.strip() if "musteri_adi" in col_map else ""
-                            df["odeme_tipi"] = df[col_map["odeme_tipi"]].astype(str).str.strip() if "odeme_tipi" in col_map else ""
-
-                            if "aciklama" in col_map:
-                                df["aciklama"] = df[col_map["aciklama"]].astype(str).str.strip()
-                                df["aciklama"] = df["aciklama"].apply(lambda x: "" if str(x).lower() in ["nan", "none", "null"] else str(x))
-                            else:
-                                df["aciklama"] = ""
-
-                            if "fatura_borcu" in col_map:
-                                df["fatura_borcu"] = df[col_map["fatura_borcu"]].apply(parse_numeric_val)
-                            else:
-                                df["fatura_borcu"] = 0.0
-
-                            personeller = df["zimmet_personel"].unique()
-
-                            for raw_p in personeller:
-                                if str(raw_p).lower() in ["nan", "", "none", "null", "toplam"]:
-                                    continue
-                                
-                                matched_p = match_personel_name(raw_p, st.session_state.personeller)
-                                if not matched_p:
-                                    continue
-                                
-                                p_df = df[df["zimmet_personel"] == raw_p]
-                                zimmet_sayisi = len(p_df)
-
-                                teslim_edildi_sayisi = 0
-                                teslim_edilmedi_bekletiliyor_sayisi = 0
-
-                                sms_sayisi, imza_sayisi, ks_sayisi = 0, 0, 0
-                                auto_nakit, auto_kart = 0.0, 0.0
-
-                                for _, row in p_df.iterrows():
-                                    norm_durum = normalize_text(row["durum"])
-                                    is_teslim = any(k in norm_durum for k in ["teslim edildi", "teslimat yapildi", "teslim yapildi", "teslimdir"]) or norm_durum in ["teslim", ""]
-                                    
-                                    borc_val = float(row["fatura_borcu"])
-                                    odeme_tipi_val = normalize_text(row["odeme_tipi"])
-
-                                    if is_teslim:
-                                        teslim_edildi_sayisi += 1
-                                        kanal_val = str(row["kanal"]).upper()
-
-                                        if "SMS" in kanal_val:
-                                            sms_sayisi += 1
-                                        elif "İMZA" in kanal_val or "IMZA" in kanal_val:
-                                            imza_sayisi += 1
-                                        else:
-                                            ks_sayisi += 1
-
-                                        if "nakit" in odeme_tipi_val or "nakıt" in odeme_tipi_val:
-                                            auto_nakit += borc_val
-                                        elif any(k in odeme_tipi_val for k in ["kart", "pos", "kredi"]):
-                                            auto_kart += borc_val
+                                    if "SMS" in kanal_val:
+                                        sms_sayisi += 1
+                                    elif "İMZA" in kanal_val or "IMZA" in kanal_val:
+                                        imza_sayisi += 1
                                     else:
-                                        teslim_edilmedi_bekletiliyor_sayisi += 1
+                                        ks_sayisi += 1
 
-                                kullanici_ozet_listesi.append({
-                                    "personel": matched_p,
-                                    "zimmet": zimmet_sayisi,
-                                    "teslim_edildi": teslim_edildi_sayisi,
-                                    "teslim_edilmedi_bekletiliyor": teslim_edilmedi_bekletiliyor_sayisi,
-                                    "sms": sms_sayisi,
-                                    "imza": imza_sayisi,
-                                    "ks": ks_sayisi,
-                                    "nakit": auto_nakit,
-                                    "kart": auto_kart,
-                                    "nakit_ft_tutari_top": 0.0,
-                                    "nakit_odeme_tutari_top": 0.0,
-                                    "toplam_tahsilat": auto_nakit
-                                })
+                                    if "nakit" in odeme_tipi_val:
+                                        auto_nakit += borc_val
+                                    elif any(k in odeme_tipi_val for k in ["kart", "pos", "kredi"]):
+                                        auto_kart += borc_val
+                                else:
+                                    teslim_edilmedi_bekletiliyor_sayisi += 1
 
-                                if matched_p not in st.session_state.personeller:
-                                    st.session_state.personeller.append(matched_p)
+                            kullanici_ozet_listesi.append({
+                                "personel": matched_p,
+                                "zimmet": zimmet_sayisi,
+                                "teslim_edildi": teslim_edildi_sayisi,
+                                "teslim_edilmedi_bekletiliyor": teslim_edilmedi_bekletiliyor_sayisi,
+                                "sms": sms_sayisi, "imza": imza_sayisi, "ks": ks_sayisi,
+                                "nakit": auto_nakit, "kart": auto_kart,
+                                "nakit_ft_tutari_top": 0.0, "nakit_odeme_tutari_top": 0.0,
+                                "toplam_tahsilat": auto_nakit
+                            })
+
+                            if matched_p not in st.session_state.personeller:
+                                st.session_state.personeller.append(matched_p)
 
         except Exception as e:
             st.error(f"{uploaded_file.name} işlenirken hata oluştu: {e}")
@@ -605,7 +612,7 @@ df_tahsilat = st.session_state.tahsilatlar
 personel_listesi = st.session_state.personeller
 
 # ==========================================
-# 1. ŞUBE TESLİM ORANI VE KANAL DAĞILIMI (GRAFİKLER)
+# 1. ŞUBE TESLİM ORANI VE KANAL DAĞILIMI
 # ==========================================
 st.markdown("### 🎯 Şube Performansı ve Kanal Dağılımı")
 
@@ -727,9 +734,9 @@ else:
 st.markdown("---")
 
 # ==========================================
-# 4. F4 ÖDEME LİSTESİ (PERSONEL BAZLI OTOMATİK LİSTELEME)
+# 4. F4 ÖDEME LİSTESİ (SÜZGEÇLİ VE YAZDIRILABİLİR)
 # ==========================================
-st.subheader("📋 F4 Ödeme Listesi")
+st.subheader("📋 F4 Ödeme Listesi (Personel Bazlı Süzgeç)")
 
 if personel_listesi:
     f4_personel_secim = st.selectbox("F4 Ödeme Listesini Görmek İstediğiniz Personel:", personel_listesi, key="f4_personel_select")
@@ -741,18 +748,18 @@ if personel_listesi:
             df_f4_goster = p_f4_df[["Müşteri Adı", "Fatura Borcu (₺)", "Açıklama"]].reset_index(drop=True)
             df_f4_goster.index = range(1, len(df_f4_goster) + 1)
             
-            st.markdown(f"**{f4_personel_secim}** için tanımlı **F4 Ödeme Listesi**:")
+            st.markdown(f"<div class='print-area'><h3>F4 Ödeme Listesi - {f4_personel_secim}</h3></div>", unsafe_allow_html=True)
             st.dataframe(df_f4_goster, use_container_width=True)
 
             toplam_f4_borc = df_f4_goster["Fatura Borcu (₺)"].sum()
             st.info(f"💰 **{f4_personel_secim} Toplam Fatura Borcu:** {toplam_f4_borc:,.2f} ₺")
 
-            col_pdf, col_excel = st.columns(2)
+            col_pdf, col_excel, col_print = st.columns(3)
             
             with col_pdf:
                 pdf_bytes = generate_pdf_bytes(df_f4_goster, f4_personel_secim)
                 st.download_button(
-                    label="📄 F4 Ödeme Listesini PDF İndir",
+                    label="📄 PDF İndir",
                     data=pdf_bytes,
                     file_name=f"F4_Odeme_Listesi_{f4_personel_secim.replace(' ', '_')}.pdf",
                     mime="application/pdf"
@@ -761,13 +768,21 @@ if personel_listesi:
             with col_excel:
                 excel_csv = df_f4_goster.to_csv(index=True, encoding='utf-8-sig')
                 st.download_button(
-                    label="📥 F4 Ödeme Listesini Excel/CSV İndir",
+                    label="📥 Excel/CSV İndir",
                     data=excel_csv,
                     file_name=f"F4_Odeme_Listesi_{f4_personel_secim.replace(' ', '_')}.csv",
                     mime="text/csv"
                 )
+
+            with col_print:
+                st.markdown("""
+                    <button onclick="window.print()" style="width:100%; height:3em; border-radius:8px; background-color:#10B981; color:white; font-weight:bold; border:none; cursor:pointer;">
+                        🖨️ Sayfayı Yazdır
+                    </button>
+                """, unsafe_allow_html=True)
+
         else:
-            st.warning(f"⚠️ {f4_personel_secim} için yüklenen Excel dosyalarında F4 kaydı bulunamadı.")
+            st.warning(f"⚠️ {f4_personel_secim} için yüklenen Excel dosyasında eşleşen müşteri kaydı bulunamadı.")
     else:
         st.info("Henüz F4 Ödeme kaydı içeren bir dosya yüklenmedi.")
 
