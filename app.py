@@ -1,4 +1,4 @@
-İmport streamlit as st
+import streamlit as st
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
@@ -878,4 +878,3 @@ if f4_add_btn:
         st.rerun()
     else:
         st.error("Lütfen Müşteri Adı alanını doldurun.")
-
