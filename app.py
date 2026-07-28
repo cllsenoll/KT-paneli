@@ -76,7 +76,8 @@ if "personeller" not in st.session_state:
 
 if "veriler" not in st.session_state:
     st.session_state.veriler = pd.DataFrame(columns=[
-        "personel", "zimmet", "teslim_edildi", "teslim_edilmedi_bekletiliyor", "sms", "imza", "ks", "nakit", "kart"
+        "personel", "zimmet", "teslim_edildi", "teslim_edilmedi_bekletiliyor", "sms", "imza", "ks", "nakit", "kart",
+        "nakit_ft_tutari_top", "nakit_odeme_tutari_top", "toplam_tahsilat"
     ])
 
 if "tahsilatlar" not in st.session_state:
@@ -92,7 +93,7 @@ with col_logo:
 
 with col_title:
     st.title("Personel Performans & F4 Ödeme Paneli")
-    st.caption("Çoklu Excel (At Zimmet / Kargo / F4) İşleme ve Otomatik Raporlama")
+    st.caption("Çoklu Excel (At Zimmet / Kargo / F4 / Hesap Alımı) İşleme ve Otomatik Raporlama")
 
 # --- SIDEBAR: PERSONEL YÖNETİMİ ---
 with st.sidebar:
@@ -299,7 +300,7 @@ def match_personel_name(raw_name, existing_list):
 st.subheader("📁 Excel / CSV Dosyası Yükleme (Çoklu Dosya Destekli)")
 
 uploaded_files = st.file_uploader(
-    "At Zimmet İzleme, Kargo Dağıtım veya F4 Ödeme Excel Dosyalarınızı Yükleyin (.xlsx, .xls veya .csv)", 
+    "At Zimmet İzleme, Kargo Dağıtım, F4 Ödeme veya Hesap Alımı Excel Dosyalarınızı Yükleyin (.xlsx, .xls veya .csv)", 
     type=["xlsx", "xls", "csv"],
     accept_multiple_files=True
 )
@@ -339,7 +340,7 @@ if uploaded_files:
             if df_raw is not None and not df_raw.empty:
                 col_map = {}
 
-                # 1. Aşama: FATURA BORCU SÜTUNUNU TESPİT ETME
+                # 1. Aşama: FATURA BORCU VE NAKİT HESAP ALIMI SÜTUNLARINI TESPİT ETME
                 fatura_col = None
                 for c in df_raw.columns:
                     norm_c = normalize_text(c)
@@ -363,6 +364,14 @@ if uploaded_files:
 
                 if fatura_col:
                     col_map["fatura_borcu"] = fatura_col
+
+                # NAKİT HESAP ALIMI SÜTUN TESPİTLERİ
+                for c in df_raw.columns:
+                    norm_c = normalize_text(c)
+                    if "nakit ft" in norm_c and "tutari" in norm_c:
+                        col_map["nakit_ft_tutari_top"] = c
+                    elif "nakit odeme" in norm_c and "tutari" in norm_c:
+                        col_map["nakit_odeme_tutari_top"] = c
 
                 # 2. Aşama: DİĞER SÜTUNLARI VE AT ZİMMET SÜTUNLARINI TESPİT ETME
                 for c in df_raw.columns:
@@ -397,10 +406,10 @@ if uploaded_files:
                     df["zimmet_personel"] = df[col_map["zimmet_personel"]].astype(str).str.strip()
 
                     # ÖZET İZLEME TABLOSU MU (AT ZİMMET İZLEME EXCEL'İ) YOKSA SATIR BAZLI MÜŞTERİ LİSTESİ Mİ?
-                    is_summary_excel = "summary_zimmet" in col_map or ("summary_teslim" in col_map and "durum" not in col_map)
+                    is_summary_excel = "summary_zimmet" in col_map or ("summary_teslim" in col_map and "durum" not in col_map) or ("nakit_ft_tutari_top" in col_map or "nakit_odeme_tutari_top" in col_map)
 
                     if is_summary_excel:
-                        # AT ZİMMET İZLEME ÖZET EXCEL İŞLEME
+                        # AT ZİMMET İZLEME VEYA HESAP ALIMI ÖZET EXCEL İŞLEME
                         for _, row in df.iterrows():
                             raw_p = row["zimmet_personel"]
                             if str(raw_p).lower() in ["nan", "", "none", "null", "toplam"]:
@@ -412,6 +421,11 @@ if uploaded_files:
                             t_val = int(parse_numeric_val(row[col_map["summary_teslim"]])) if "summary_teslim" in col_map else 0
                             b_val = int(parse_numeric_val(row[col_map["summary_bekleyen"]])) if "summary_bekleyen" in col_map else (z_val - t_val if z_val >= t_val else 0)
 
+                            # HESAP ALIMI NAKİT TOPLAMLARI
+                            nft_val = parse_numeric_val(row[col_map["nakit_ft_tutari_top"]]) if "nakit_ft_tutari_top" in col_map else 0.0
+                            nod_val = parse_numeric_val(row[col_map["nakit_odeme_tutari_top"]]) if "nakit_odeme_tutari_top" in col_map else 0.0
+                            toplam_tahsilat_val = nft_val + nod_val
+
                             kullanici_ozet_listesi.append({
                                 "personel": matched_p,
                                 "zimmet": z_val,
@@ -421,7 +435,10 @@ if uploaded_files:
                                 "imza": 0,
                                 "ks": 0,
                                 "nakit": 0.0,
-                                "kart": 0.0
+                                "kart": 0.0,
+                                "nakit_ft_tutari_top": nft_val,
+                                "nakit_odeme_tutari_top": nod_val,
+                                "toplam_tahsilat": toplam_tahsilat_val
                             })
 
                             if matched_p not in st.session_state.personeller:
@@ -506,7 +523,10 @@ if uploaded_files:
                                 "imza": imza_sayisi,
                                 "ks": ks_sayisi,
                                 "nakit": auto_nakit,
-                                "kart": auto_kart
+                                "kart": auto_kart,
+                                "nakit_ft_tutari_top": 0.0,
+                                "nakit_odeme_tutari_top": 0.0,
+                                "toplam_tahsilat": auto_nakit
                             })
 
                             if matched_p not in st.session_state.personeller:
@@ -573,7 +593,7 @@ kpi1.metric("Toplam Teslim Edildi", f"{toplam_teslim_edildi} Adet")
 kpi2.metric("Teslim Edilmedi / Bekletiliyor", f"{toplam_teslim_edilmedi_bekletiliyor} Adet")
 kpi3.metric("Toplam Fatura Borcu", f"{toplam_tahsilat:,.2f} ₺")
 
-# NEW SECTION: PERSONEL BAZLI ÖZEL ANALİZ (YÜZDELİK VE PASTA GRAFİĞİ)
+# PERSONEL BAZLI ÖZEL ANALİZ (YÜZDELİK VE PASTA GRAFİĞİ)
 st.markdown("#### 👤 Personel Bazlı Özel Teslimat Analizi")
 
 if personel_listesi:
@@ -616,8 +636,45 @@ if not df_veriler.empty:
 
 st.markdown("---")
 
-# ===# ==========================================
-# 3. F4 ÖDEME LİSTESİ (PERSONEL BAZLI OTOMATİK LİSTELEME)
+# ==========================================
+# 3. YENİ EKLENEN BÖLÜM: PERSONEL HESAP ALIMI EKRANI
+# ==========================================
+st.subheader("💵 Personel Hesap Alımı Ekranı")
+
+if not df_veriler.empty and "toplam_tahsilat" in df_veriler.columns:
+    df_hesap = df_veriler.groupby("personel")[["nakit_ft_tutari_top", "nakit_odeme_tutari_top", "toplam_tahsilat"]].sum().reset_index()
+    
+    genel_toplam_tahsilat = df_hesap["toplam_tahsilat"].sum()
+    st.info(f"💵 **Şube Genel Toplam Nakit Tahsilat:** {genel_toplam_tahsilat:,.2f} ₺")
+
+    if personel_listesi:
+        hesap_p_secim = st.selectbox("Hesap Alımı Yapılacak Personeli Seçin:", personel_listesi, key="hesap_p_select")
+        
+        p_hesap_df = df_hesap[df_hesap["personel"] == hesap_p_secim]
+
+        if not p_hesap_df.empty:
+            nft = float(p_hesap_df["nakit_ft_tutari_top"].values[0])
+            nod = float(p_hesap_df["nakit_odeme_tutari_top"].values[0])
+            top_tah = float(p_hesap_df["toplam_tahsilat"].values[0])
+
+            st.markdown(f"**{hesap_p_secim}** Günlük Tahsilat Detayı:")
+            
+            h_col1, h_col2, h_col3 = st.columns(3)
+            h_col1.metric("Nakit Ft. Tutarı Top.", f"{nft:,.2f} ₺")
+            h_col2.metric("Nakit Ödeme Tutarı Topl.", f"{nod:,.2f} ₺")
+            h_col3.metric("Toplam Tahsilat", f"{top_tah:,.2f} ₺")
+
+        st.markdown("#### 📋 Tüm Personellerin Hesap Alım Özeti Tablosu")
+        df_hesap_goster = df_hesap.copy()
+        df_hesap_goster.columns = ["Personel", "Nakit Ft. Tutarı Top. (₺)", "Nakit Ödeme Tutarı Topl. (₺)", "Toplam Tahsilat (₺)"]
+        st.dataframe(df_hesap_goster, use_container_width=True)
+else:
+    st.info("Hesap Alımı verilerini görmek için lütfen içerisinde 'Nakit Ft. Tutarı Top' ve 'Nakit Ödeme Tutarı Topl.' alanları bulunan Excel dosyanızı yükleyin.")
+
+st.markdown("---")
+
+# ==========================================
+# 4. F4 ÖDEME LİSTESİ (PERSONEL BAZLI OTOMATİK LİSTELEME)
 # ==========================================
 st.subheader("📋 F4 Ödeme Listesi")
 
@@ -657,14 +714,14 @@ if personel_listesi:
                     mime="text/csv"
                 )
         else:
-            st.warning(f"⚠️ {f4_personel_secim} için yüklenen Excel dosyalarında herhangi bir kayıt bulunamadı.")
+            st.warning(f"⚠️ {f4_personel_secim} için yüklenen Excel dosyalarında F4 kaydı bulunamadı.")
     else:
-        st.info("Henüz Excel dosyası yüklenmedi veya işlem yapılmadı.")
+        st.info("Henüz F4 Ödeme kaydı içeren bir dosya yüklenmedi.")
 
 st.markdown("---")
 
 # ==========================================
-# 4. MANUEL F4 KAYDI EKLEME
+# 5. MANUEL F4 KAYDI EKLEME
 # ==========================================
 st.subheader("➕ Manuel F4 Kaydı Ekle")
 
