@@ -56,22 +56,94 @@ PERSONEL_MUSTERI_HARITASI = {
 
 # Sayfa Yapılandırması
 st.set_page_config(
-    page_title="Personel Performans & F4 Ödeme Paneli", 
+    page_title="Görükle Acente - Operasyon Yönetimi", 
     page_icon=LOGO_URL, 
-    layout="centered"
+    layout="wide"
 )
 
-# Özel Stil / CSS
+# --- TASARIMA ÖZEL CSS TEMA ENTEGRASYONU ---
 st.markdown("""
     <style>
+    /* Ana Arka Plan ve Font */
+    .stApp {
+        background-color: #0B132B;
+        color: #E0E6ED;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    
+    /* Yan Menü (Sidebar) */
+    [data-testid="stSidebar"] {
+        background-color: #1C2541;
+        border-right: 1px solid #2A385B;
+    }
+    
+    /* Kart Yapıları */
+    .css-1r6slb0, .stCard, div[data-testid="stMetricValue"] {
+        background-color: #1C2541;
+        border-radius: 12px;
+        padding: 12px;
+    }
+    
+    /* Metrik Kartı Tasarımı */
+    div[data-testid="stMetric"] {
+        background: linear-gradient(135deg, #1C2541 0%, #16203B 100%);
+        border: 1px solid #2A385B;
+        border-radius: 14px;
+        padding: 15px 20px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    
+    div[data-testid="stMetricLabel"] {
+        color: #94A3B8 !important;
+        font-size: 0.9rem !important;
+        font-weight: 600;
+    }
+    
+    div[data-testid="stMetricValue"] {
+        color: #FFFFFF !important;
+        font-size: 1.8rem !important;
+        font-weight: 800;
+        background: transparent;
+        padding: 0;
+    }
+
+    /* Turuncu ve Mavi Butonlar */
     .stButton>button {
         width: 100%;
-        border-radius: 8px;
-        height: 3em;
-        background-color: #2563EB;
+        border-radius: 10px;
+        height: 3.2em;
+        background: linear-gradient(90deg, #FF6B00 0%, #FF8533 100%);
         color: white;
-        font-weight: bold;
+        font-weight: 700;
+        border: none;
+        box-shadow: 0 4px 12px rgba(255, 107, 0, 0.3);
+        transition: all 0.3s ease;
     }
+    
+    .stButton>button:hover {
+        background: linear-gradient(90deg, #E05E00 0%, #FF6B00 100%);
+        box-shadow: 0 6px 16px rgba(255, 107, 0, 0.4);
+    }
+
+    /* Tablo ve Dataframe Stili */
+    [data-testid="stDataFrame"] {
+        background-color: #1C2541;
+        border-radius: 12px;
+        border: 1px solid #2A385B;
+    }
+    
+    /* Header Alanı */
+    .header-container {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background-color: #1C2541;
+        padding: 15px 25px;
+        border-radius: 14px;
+        border: 1px solid #2A385B;
+        margin-bottom: 25px;
+    }
+
     @media print {
         .stSidebar, .stButton, header, footer, .no-print {
             display: none !important;
@@ -184,15 +256,18 @@ if "banka_girisleri" not in st.session_state:
 if "ana_kasa_val" not in st.session_state:
     st.session_state.ana_kasa_val = 0.0
 
-# Üst Başlık ve Logo
-col_logo, col_title = st.columns([1, 3])
-
-with col_logo:
-    st.image(LOGO_URL, width=90)
-
-with col_title:
-    st.title("Personel Performans & F4 Ödeme Paneli")
-    st.caption("Çoklu Excel (At Zimmet / Kargo / F4 / Hesap Alımı) İşleme ve Otomatik Raporlama")
+# --- YENİ TASARIMA UYGUN ÜST BAŞLIK ALANI ---
+st.markdown(f"""
+    <div class="header-container">
+        <div style="display: flex; align-items: center; gap: 18px;">
+            <img src="{LOGO_URL}" width="70" style="border-radius: 8px;">
+            <div>
+                <h2 style="margin: 0; color: #FFFFFF; font-weight: 800;">Görükle Acente</h2>
+                <span style="color: #94A3B8; font-size: 0.9rem;">Operasyon Yönetimi & Personel Performans Paneli</span>
+            </div>
+        </div>
+    </div>
+""", unsafe_allow_html=True)
 
 # --- SIDEBAR: PERSONEL YÖNETİMİ ---
 with st.sidebar:
@@ -221,55 +296,55 @@ with st.sidebar:
             st.success(f"{silinecek_personel} silindi!")
             st.rerun()
 
-# --- GRAFİK FONKSİYONLARI ---
+# --- GRAFİK FONKSİYONLARI (TASARIM RENKLERİNE UYARLANDI) ---
 def ibre_grafik_ciz(teslim_edildi, bekletiliyor, zimmet, baslik_metni, alt_metin=""):
     basari_orani = (teslim_edildi / zimmet * 100) if zimmet > 0 else 0
 
     fig, ax = plt.subplots(figsize=(5, 3), subplot_kw={'projection': 'polar'})
-    fig.patch.set_facecolor('#0E1117')
-    ax.set_facecolor('#0E1117')
+    fig.patch.set_facecolor('#1C2541')
+    ax.set_facecolor('#1C2541')
 
     theta_yesil = np.linspace(np.pi/2, np.pi, 100)
     theta_kirmizi = np.linspace(0, np.pi/2, 100)
     r = 1
 
-    ax.plot(theta_yesil, [r]*100, color="#10B981", linewidth=16, alpha=0.3)
-    ax.plot(theta_kirmizi, [r]*100, color="#EF4444", linewidth=16, alpha=0.3)
+    ax.plot(theta_yesil, [r]*100, color="#2563EB", linewidth=16, alpha=0.3)
+    ax.plot(theta_kirmizi, [r]*100, color="#FF6B00", linewidth=16, alpha=0.3)
 
     doluluk_theta = np.linspace(np.pi, np.pi - (basari_orani / 100 * np.pi), 100)
-    ax.plot(doluluk_theta, [r]*100, color="#10B981", linewidth=18)
+    ax.plot(doluluk_theta, [r]*100, color="#2563EB", linewidth=18)
 
     ax.set_theta_zero_location('W')
     ax.set_theta_direction(-1)
     ax.set_axis_off()
 
     ax.text(0, 0, f"%{basari_orani:.1f}", horizontalalignment='center', verticalalignment='center', fontsize=22, fontweight='bold', color='white')
-    ax.text(0, -0.35, f"{alt_metin}\nZimmet: {zimmet} | Teslim: {teslim_edildi} | Bekleyen: {bekletiliyor}", horizontalalignment='center', verticalalignment='center', fontsize=9, color='#8B949E')
+    ax.text(0, -0.35, f"{alt_metin}\nZimmet: {zimmet} | Teslim: {teslim_edildi} | Bekleyen: {bekletiliyor}", horizontalalignment='center', verticalalignment='center', fontsize=9, color='#94A3B8')
 
     return fig
 
 def pasta_grafigi_ciz(sms, imza, ks):
     etiketler, degerler = [], []
     if sms > 0:
-        etiketler.append(f"SMS\n({sms})")
+        etiketler.append(f"SMS ({sms})")
         degerler.append(sms)
     if imza > 0:
-        etiketler.append(f"İmza\n({imza})")
+        etiketler.append(f"İmza ({imza})")
         degerler.append(imza)
     if ks > 0:
-        etiketler.append(f"KS / Diğer\n({ks})")
+        etiketler.append(f"KS ({ks})")
         degerler.append(ks)
 
     fig, ax = plt.subplots(figsize=(4, 3))
-    fig.patch.set_facecolor('#0E1117')
-    ax.set_facecolor('#0E1117')
+    fig.patch.set_facecolor('#1C2541')
+    ax.set_facecolor('#1C2541')
 
     if not degerler:
         ax.text(0.5, 0.5, "Kanal Verisi Yok", color="white", ha="center", va="center")
         ax.axis("off")
         return fig
 
-    renkler = ['#3B82F6', '#10B981', '#F59E0B']
+    renkler = ['#2563EB', '#FF6B00', '#F59E0B']
     wedges, texts, autotexts = ax.pie(
         degerler, labels=etiketler, autopct='%1.1f%%', startangle=140, 
         colors=renkler[:len(degerler)], textprops=dict(color="white", fontsize=9)
@@ -284,12 +359,12 @@ def pasta_grafigi_ciz(sms, imza, ks):
 
 def personel_pasta_grafigi_ciz(personel_adi, teslim_edildi, bekletiliyor):
     fig, ax = plt.subplots(figsize=(4, 3.2))
-    fig.patch.set_facecolor('#0E1117')
-    ax.set_facecolor('#0E1117')
+    fig.patch.set_facecolor('#1C2541')
+    ax.set_facecolor('#1C2541')
 
     degerler = [teslim_edildi, bekletiliyor]
-    etiketler = [f"Teslim Edildi\n({teslim_edildi})", f"Bekletiliyor\n({bekletiliyor})"]
-    renkler = ['#10B981', '#EF4444']
+    etiketler = [f"Teslim ({teslim_edildi})", f"Devir ({bekletiliyor})"]
+    renkler = ['#2563EB', '#FF6B00']
 
     if sum(degerler) == 0:
         ax.text(0.5, 0.5, "Henüz Veri Yok", color="white", ha="center", va="center", fontsize=11)
@@ -314,27 +389,27 @@ def personel_pasta_grafigi_ciz(personel_adi, teslim_edildi, bekletiliyor):
 
 def sutun_grafigi_ciz(df_veriler):
     fig, ax = plt.subplots(figsize=(7, 3.5))
-    fig.patch.set_facecolor('#0E1117')
-    ax.set_facecolor('#0E1117')
+    fig.patch.set_facecolor('#1C2541')
+    ax.set_facecolor('#1C2541')
 
     df_p = df_veriler.groupby("personel")[["teslim_edildi", "teslim_edilmedi_bekletiliyor"]].sum().reset_index()
     x = np.arange(len(df_p))
     width = 0.35
 
-    rects1 = ax.bar(x - width/2, df_p["teslim_edildi"], width, label='Teslim Edildi', color='#10B981')
-    rects2 = ax.bar(x + width/2, df_p["teslim_edilmedi_bekletiliyor"], width, label='Teslim Edilmedi / Bekletiliyor', color='#EF4444')
+    rects1 = ax.bar(x - width/2, df_p["teslim_edildi"], width, label='Teslim Edildi', color='#2563EB')
+    rects2 = ax.bar(x + width/2, df_p["teslim_edilmedi_bekletiliyor"], width, label='Devir / Bekleyen', color='#FF6B00')
 
     ax.set_ylabel('Kargo Adedi', color='white')
-    ax.set_title('Personel Bazlı Teslimat ve Bekleyen Dağılımı', color='white', fontweight='bold', pad=12)
+    ax.set_title('Personel Bazlı Teslimat ve Devir Dağılımı', color='white', fontweight='bold', pad=12)
     ax.set_xticks(x)
     ax.set_xticklabels(df_p["personel"], color='white', rotation=15, ha='right', fontsize=8)
     ax.tick_params(colors='white')
-    ax.legend(facecolor='#1F2937', edgecolor='none', labelcolor='white')
+    ax.legend(facecolor='#0B132B', edgecolor='none', labelcolor='white')
 
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
-    ax.spines['bottom'].set_color('#374151')
-    ax.spines['left'].set_color('#374151')
+    ax.spines['bottom'].set_color('#2A385B')
+    ax.spines['left'].set_color('#2A385B')
 
     plt.tight_layout()
     return fig
@@ -648,13 +723,28 @@ df_tahsilat = st.session_state.tahsilatlar
 personel_listesi = st.session_state.personeller
 
 # ==========================================
-# 1. ŞUBE TESLİM ORANI VE KANAL DAĞILIMI
+# 1. METRİK KARTLARI (GÖRSEL TASARIMA UYGUN)
 # ==========================================
-st.markdown("### 🎯 Şube Performansı ve Kanal Dağılımı")
-
 toplam_zimmet = int(df_veriler["zimmet"].sum()) if not df_veriler.empty else 0
 toplam_teslim_edildi = int(df_veriler["teslim_edildi"].sum()) if not df_veriler.empty else 0
 toplam_teslim_edilmedi_bekletiliyor = int(df_veriler["teslim_edilmedi_bekletiliyor"].sum()) if not df_veriler.empty else 0
+
+toplam_nakit = float(df_veriler["nakit"].sum()) if not df_veriler.empty else 0.0
+toplam_kart = float(df_veriler["kart"].sum()) if not df_veriler.empty else 0.0
+toplam_tahsilat_tutar = toplam_nakit + toplam_kart
+
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("📦 Toplam Zimmet", f"{toplam_zimmet:,}")
+m2.metric("✅ Teslim Edilen", f"{toplam_teslim_edildi:,}")
+m3.metric("🔄 Devir / Bekleyen", f"{toplam_teslim_edilmedi_bekletiliyor:,}")
+m4.metric("💰 Tahsilat Tutarı", f"₺{toplam_tahsilat_tutar:,.2f}")
+
+st.markdown("---")
+
+# ==========================================
+# 2. PERFORMANS VE GRAFİK PANELLERİ
+# ==========================================
+st.markdown("### 🎯 Şube Performansı ve Kanal Dağılımı")
 
 toplam_sms = int(df_veriler["sms"].sum()) if not df_veriler.empty else 0
 toplam_imza = int(df_veriler["imza"].sum()) if not df_veriler.empty else 0
@@ -678,77 +768,18 @@ if not df_veriler.empty and df_veriler["zimmet"].sum() > 0:
 st.markdown("---")
 
 # ==========================================
-# 2. GENEL DURUM VE PERFORMANS (KPİ & ÖZET TABLO)
-# ==========================================
-st.subheader("📊 Genel Durum ve Performans")
-
-toplam_nakit = float(df_veriler["nakit"].sum()) if not df_veriler.empty else 0.0
-toplam_kart = float(df_veriler["kart"].sum()) if not df_veriler.empty else 0.0
-toplam_tahsilat = toplam_nakit + toplam_kart
-
-kpi1, kpi2, kpi3 = st.columns(3)
-kpi1.metric("Toplam Teslim Edildi", f"{toplam_teslim_edildi} Adet")
-kpi2.metric("Teslim Edilmedi / Bekletiliyor", f"{toplam_teslim_edilmedi_bekletiliyor} Adet")
-kpi3.metric("Toplam Fatura Borcu", f"{toplam_tahsilat:,.2f} ₺")
-
-st.markdown("#### 👤 Personel Bazlı Özel Teslimat Analizi")
-
-if personel_listesi:
-    secili_p_analiz = st.selectbox("Analiz Edilecek Personeli Seçin:", personel_listesi, key="analiz_personel_select")
-    
-    p_zimmet = 0
-    p_teslim = 0
-    p_bekleyen = 0
-
-    if not df_veriler.empty:
-        p_df = df_veriler[df_veriler["personel"] == secili_p_analiz]
-        if not p_df.empty:
-            p_zimmet = int(p_df["zimmet"].sum())
-            p_teslim = int(p_df["teslim_edildi"].sum())
-            p_bekleyen = int(p_df["teslim_edilmedi_bekletiliyor"].sum())
-
-    p_yuzde = (p_teslim / p_zimmet * 100) if p_zimmet > 0 else 0.0
-
-    col_p_info, col_p_chart = st.columns([1.2, 1])
-
-    with col_p_info:
-        st.markdown(f"**{secili_p_analiz}** Detaylı Performans Verileri:")
-        st.metric("Teslimat Başarı Oranı", f"%{p_yuzde:.1f}")
-        
-        c_k1, c_k2, c_k3 = st.columns(3)
-        c_k1.metric("Zimmet", f"{p_zimmet}")
-        c_k2.metric("Teslim", f"{p_teslim}")
-        c_k3.metric("Bekleyen", f"{p_bekleyen}")
-
-    with col_p_chart:
-        fig_p_pasta = personel_pasta_grafigi_ciz(secili_p_analiz, p_teslim, p_bekleyen)
-        st.pyplot(fig_p_pasta)
-
-if not df_veriler.empty:
-    st.markdown("#### 👥 Personel Zimmet & Teslim Özeti Tablosu")
-    df_ozet_goster = df_veriler.groupby("personel")[["zimmet", "teslim_edildi", "teslim_edilmedi_bekletiliyor", "sms", "imza", "ks"]].sum().reset_index()
-    df_ozet_goster.columns = ["Personel", "Zimmet Adedi", "Teslim Edilen", "Bekleyen", "SMS", "İmza", "KS/Diğer"]
-    st.dataframe(df_ozet_goster, use_container_width=True)
-
-st.markdown("---")
-
-# ==========================================
-# 3. PERSONEL HESAP ALIMI EKRANI (DÜZELTİLMİŞ KASA MANTIĞI)
+# 3. PERSONEL HESAP ALIMI EKRANI
 # ==========================================
 st.subheader("💵 Personel Hesap Alımı Ekranı")
 
 if not df_hesap_verileri.empty:
     df_hesap = df_hesap_verileri.groupby("personel")[["nakit_ft_tutari_top", "nakit_odeme_tutari_top"]].sum().reset_index()
     
-    # Mevcut banka değerlerini oturumdan ekle
     df_hesap["banka"] = df_hesap["personel"].apply(lambda p: st.session_state.banka_girisleri.get(p, 0.0))
-    
-    # Formül: (Nakit Ft + Nakit Ödeme) - Banka
     df_hesap["toplam_tahsilat"] = (df_hesap["nakit_ft_tutari_top"] + df_hesap["nakit_odeme_tutari_top"]) - df_hesap["banka"]
 
     genel_toplam_tahsilat = df_hesap["toplam_tahsilat"].sum()
 
-    # --- ANA KASA & KASA MUTABAKAT ALANI ---
     st.info(f"💵 **Şube Genel Toplam Net Tahsilat:** {genel_toplam_tahsilat:,.2f} ₺")
 
     col_kasa1, col_kasa2 = st.columns(2)
@@ -764,24 +795,20 @@ if not df_hesap_verileri.empty:
 
     with col_kasa2:
         st.markdown("🔒 **KASA DENGESİ**")
-        # DÜZELTİLEN MANTIK: Ana Kasa > Şube Tahsilat ise AÇIK (Kırmızı), değilse TAM (Yeşil)
         if ana_kasa_giris > genel_toplam_tahsilat:
             fark = ana_kasa_giris - genel_toplam_tahsilat
             st.metric("KASA Tutar Farkı", f"{fark:,.2f} ₺")
-            st.markdown(f"🔴 <h3 style='color:#EF4444; margin:0;'>AÇIK: {fark:,.2f} ₺</h3>", unsafe_allow_html=True)
+            st.markdown(f"🔴 <h3 style='color:#FF6B00; margin:0;'>AÇIK: {fark:,.2f} ₺</h3>", unsafe_allow_html=True)
         else:
             fark = genel_toplam_tahsilat - ana_kasa_giris
             st.metric("KASA Tutar Farkı", f"{fark:,.2f} ₺")
-            st.markdown(f"🟢 <h3 style='color:#10B981; margin:0;'>TAM: {fark:,.2f} ₺</h3>", unsafe_allow_html=True)
+            st.markdown(f"🟢 <h3 style='color:#2563EB; margin:0;'>TAM: {fark:,.2f} ₺</h3>", unsafe_allow_html=True)
 
     st.markdown("#### 📋 Tüm Personellerin Hesap Alım Özeti Tablosu")
-    st.caption("💡 **Not:** Yalnızca **Banka** sütununa manuel tutar girebilirsiniz. Toplam Tahsilat = (Nakit Ft. + Nakit Ödeme) - Banka şeklinde otomatik hesaplanır.")
-
-    # Gösterim için sütun adlandırma
+    
     df_editor = df_hesap.copy()
     df_editor.columns = ["Personel", "Nakit Ft. Tutarı Top", "Nakit Ödeme Tutarı Topl", "Banka", "Toplam Tahsilat"]
 
-    # Sadece Banka sütununu düzenlenebilir yap, diğerlerini kilitle
     edited_df = st.data_editor(
         df_editor,
         disabled=["Personel", "Nakit Ft. Tutarı Top", "Nakit Ödeme Tutarı Topl", "Toplam Tahsilat"],
@@ -797,7 +824,6 @@ if not df_hesap_verileri.empty:
         key="hesap_alimi_editor"
     )
 
-    # Düzenlenen verileri güncelleyip hesaplamayı yeniden yap
     devises_made = False
     for idx, row in edited_df.iterrows():
         p_name = row["Personel"]
@@ -808,7 +834,6 @@ if not df_hesap_verileri.empty:
             devises_made = True
 
     if devises_made:
-        # Anlık oturum verilerini güncelle ve sayfayı yenile
         for p_name, b_val in st.session_state.banka_girisleri.items():
             st.session_state.hesap_verileri.loc[st.session_state.hesap_verileri["personel"] == p_name, "banka"] = b_val
             st.session_state.hesap_verileri.loc[st.session_state.hesap_verileri["personel"] == p_name, "toplam_tahsilat"] = (
@@ -818,37 +843,18 @@ if not df_hesap_verileri.empty:
             )
         st.rerun()
 
-    if personel_listesi:
-        st.markdown("---")
-        hesap_p_secim = st.selectbox("Seçili Personel Detayı Göster:", personel_listesi, key="hesap_p_select")
-        p_hesap_df = edited_df[edited_df["Personel"] == hesap_p_secim]
-
-        if not p_hesap_df.empty:
-            nft = float(p_hesap_df["Nakit Ft. Tutarı Top"].values[0])
-            nod = float(p_hesap_df["Nakit Ödeme Tutarı Topl"].values[0])
-            bnk = float(p_hesap_df["Banka"].values[0])
-            top_tah = (nft + nod) - bnk
-
-            st.markdown(f"**{hesap_p_secim}** Günlük Tahsilat Detayı:")
-            
-            h_col1, h_col2, h_col3, h_col4 = st.columns(4)
-            h_col1.metric("Nakit Ft. Tutarı Top", f"{nft:,.2f} ₺")
-            h_col2.metric("Nakit Ödeme Tutarı Topl", f"{nod:,.2f} ₺")
-            h_col3.metric("Banka", f"{bnk:,.2f} ₺")
-            h_col4.metric("Toplam Tahsilat", f"{top_tah:,.2f} ₺")
-
 else:
-    st.info("Hesap Alımı verilerini görmek için lütfen içerisinde 'Nakit Ft. Tutarı Top' ve 'Nakit Ödeme Tutarı Topl' alanları bulunan Excel dosyanızı yükleyin.")
+    st.info("Hesap Alımı verilerini görmek için ilgili Excel dosyanızı yükleyin.")
 
 st.markdown("---")
 
 # ==========================================
-# 4. F4 ÖDEME LİSTESİ (SÜZGEÇLİ VE YAZDIRILABİLİR)
+# 4. F4 ÖDEME LİSTESİ & MANUEL KAYIT
 # ==========================================
-st.subheader("📋 F4 Ödeme Listesi (Personel Bazlı Süzgeç)")
+st.subheader("📋 F4 Ödeme Listesi")
 
 if personel_listesi:
-    f4_personel_secim = st.selectbox("F4 Ödeme Listesini Görmek İstediğiniz Personel:", personel_listesi, key="f4_personel_select")
+    f4_personel_secim = st.selectbox("Personel Seçin:", personel_listesi, key="f4_personel_select")
 
     if not df_tahsilat.empty and "Personel" in df_tahsilat.columns:
         p_f4_df = df_tahsilat[df_tahsilat["Personel"] == f4_personel_secim]
@@ -857,13 +863,12 @@ if personel_listesi:
             df_f4_goster = p_f4_df[["Müşteri Adı", "Fatura Borcu (₺)", "Açıklama"]].reset_index(drop=True)
             df_f4_goster.index = range(1, len(df_f4_goster) + 1)
             
-            st.markdown(f"<div class='print-area'><h3>F4 Ödeme Listesi - {f4_personel_secim}</h3></div>", unsafe_allow_html=True)
             st.dataframe(df_f4_goster, use_container_width=True)
 
             toplam_f4_borc = df_f4_goster["Fatura Borcu (₺)"].sum()
             st.info(f"💰 **{f4_personel_secim} Toplam Fatura Borcu:** {toplam_f4_borc:,.2f} ₺")
 
-            col_pdf, col_excel, col_print = st.columns(3)
+            col_pdf, col_excel = st.columns(2)
             
             with col_pdf:
                 pdf_bytes = generate_pdf_bytes(df_f4_goster, f4_personel_secim)
@@ -882,48 +887,3 @@ if personel_listesi:
                     file_name=f"F4_Odeme_Listesi_{f4_personel_secim.replace(' ', '_')}.csv",
                     mime="text/csv"
                 )
-
-            with col_print:
-                st.markdown("""
-                    <button onclick="window.print()" style="width:100%; height:3em; border-radius:8px; background-color:#10B981; color:white; font-weight:bold; border:none; cursor:pointer;">
-                        🖨️ Sayfayı Yazdır
-                    </button>
-                """, unsafe_allow_html=True)
-
-        else:
-            st.warning(f"⚠️ {f4_personel_secim} için yüklenen Excel dosyasında eşleşen müşteri kaydı bulunamadı.")
-    else:
-        st.info("Henüz F4 Ödeme kaydı içeren bir dosya yüklenmedi.")
-
-st.markdown("---")
-
-# ==========================================
-# 5. MANUEL F4 KAYDI EKLEME
-# ==========================================
-st.subheader("➕ Manuel F4 Kaydı Ekle")
-
-with st.form("manual_f4_form"):
-    p_sec = st.selectbox("Personel:", personel_listesi, key="manual_p_sec")
-    c_m1, c_m2, c_m3 = st.columns([2, 1.5, 2.5])
-    with c_m1:
-        m_adi_in = st.text_input("Müşteri Adı:")
-    with c_m2:
-        m_borc_in = st.number_input("Fatura Borcu (₺):", min_value=0.0, step=10.0)
-    with c_m3:
-        m_ack_in = st.text_input("Açıklama:")
-
-    f4_add_btn = st.form_submit_button("💾 F4 Kaydını Ekle")
-
-if f4_add_btn:
-    if m_adi_in.strip():
-        yeni_f4 = {
-            "Personel": p_sec,
-            "Müşteri Adı": m_adi_in.strip(),
-            "Fatura Borcu (₺)": m_borc_in,
-            "Açıklama": m_ack_in.strip()
-        }
-        st.session_state.tahsilatlar = pd.concat([st.session_state.tahsilatlar, pd.DataFrame([yeni_f4])], ignore_index=True)
-        st.success(f"✓ {m_adi_in} kaydı {p_sec} için eklendi.")
-        st.rerun()
-    else:
-        st.error("Lütfen Müşteri Adı alanını doldurulun.")
