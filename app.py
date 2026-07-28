@@ -166,13 +166,16 @@ if "personeller" not in st.session_state:
 if "veriler" not in st.session_state:
     st.session_state.veriler = pd.DataFrame(columns=[
         "personel", "zimmet", "teslim_edildi", "teslim_edilmedi_bekletiliyor", "sms", "imza", "ks", "nakit", "kart",
-        "nakit_ft_tutari_top", "nakit_odeme_tutari_top", "toplam_tahsilat"
+        "nakit_ft_tutari_top", "nakit_odeme_tutari_top", "banka", "toplam_tahsilat"
     ])
 
 if "tahsilatlar" not in st.session_state:
     st.session_state.tahsilatlar = pd.DataFrame(columns=[
         "Personel", "Müşteri Adı", "Fatura Borcu (₺)", "Açıklama"
     ])
+
+if "banka_girisleri" not in st.session_state:
+    st.session_state.banka_girisleri = {}
 
 # Üst Başlık ve Logo
 col_logo, col_title = st.columns([1, 3])
@@ -522,7 +525,12 @@ if uploaded_files:
 
                             nft_val = parse_numeric_val(row[col_map["nakit_ft_tutari_top"]]) if "nakit_ft_tutari_top" in col_map else 0.0
                             nod_val = parse_numeric_val(row[col_map["nakit_odeme_tutari_top"]]) if "nakit_odeme_tutari_top" in col_map else 0.0
-                            toplam_tahsilat_val = nft_val + nod_val
+                            
+                            # Banka giriş değerini al, yoksa 0.0
+                            banka_val = st.session_state.banka_girisleri.get(matched_p, 0.0)
+                            
+                            # Formül: (Nakit Ft + Nakit Ödeme) - Banka
+                            toplam_tahsilat_val = (nft_val + nod_val) - banka_val
 
                             kullanici_ozet_listesi.append({
                                 "personel": matched_p,
@@ -532,6 +540,7 @@ if uploaded_files:
                                 "sms": 0, "imza": 0, "ks": 0, "nakit": 0.0, "kart": 0.0,
                                 "nakit_ft_tutari_top": nft_val,
                                 "nakit_odeme_tutari_top": nod_val,
+                                "banka": banka_val,
                                 "toplam_tahsilat": toplam_tahsilat_val
                             })
 
@@ -581,6 +590,8 @@ if uploaded_files:
                                 else:
                                     teslim_edilmedi_bekletiliyor_sayisi += 1
 
+                            banka_val = st.session_state.banka_girisleri.get(matched_p, 0.0)
+
                             kullanici_ozet_listesi.append({
                                 "personel": matched_p,
                                 "zimmet": zimmet_sayisi,
@@ -589,7 +600,8 @@ if uploaded_files:
                                 "sms": sms_sayisi, "imza": imza_sayisi, "ks": ks_sayisi,
                                 "nakit": auto_nakit, "kart": auto_kart,
                                 "nakit_ft_tutari_top": 0.0, "nakit_odeme_tutari_top": 0.0,
-                                "toplam_tahsilat": auto_nakit
+                                "banka": banka_val,
+                                "toplam_tahsilat": auto_nakit - banka_val
                             })
 
                             if matched_p not in st.session_state.personeller:
@@ -697,39 +709,87 @@ if not df_veriler.empty:
 st.markdown("---")
 
 # ==========================================
-# 3. PERSONEL HESAP ALIMI EKRANI
+# 3. PERSONEL HESAP ALIMI EKRANI (GÜNCELLENDİ)
 # ==========================================
 st.subheader("💵 Personel Hesap Alımı Ekranı")
 
-if not df_veriler.empty and "toplam_tahsilat" in df_veriler.columns:
-    df_hesap = df_veriler.groupby("personel")[["nakit_ft_tutari_top", "nakit_odeme_tutari_top", "toplam_tahsilat"]].sum().reset_index()
+if not df_veriler.empty and ("nakit_ft_tutari_top" in df_veriler.columns or "nakit_odeme_tutari_top" in df_veriler.columns):
+    df_hesap = df_veriler.groupby("personel")[["nakit_ft_tutari_top", "nakit_odeme_tutari_top"]].sum().reset_index()
     
+    # Mevcut banka değerlerini oturumdan ekle
+    df_hesap["banka"] = df_hesap["personel"].apply(lambda p: st.session_state.banka_girisleri.get(p, 0.0))
+    
+    # Formül: (Nakit Ft + Nakit Ödeme) - Banka
+    df_hesap["toplam_tahsilat"] = (df_hesap["nakit_ft_tutari_top"] + df_hesap["nakit_odeme_tutari_top"]) - df_hesap["banka"]
+
     genel_toplam_tahsilat = df_hesap["toplam_tahsilat"].sum()
-    st.info(f"💵 **Şube Genel Toplam Nakit Tahsilat:** {genel_toplam_tahsilat:,.2f} ₺")
+    st.info(f"💵 **Şube Genel Toplam Net Tahsilat:** {genel_toplam_tahsilat:,.2f} ₺")
+
+    st.markdown("#### 📋 Tüm Personellerin Hesap Alım Özeti Tablosu")
+    st.caption("💡 **Not:** Yalnızca **Banka** sütununa manuel tutar girebilirsiniz. Toplam Tahsilat = (Nakit Ft. + Nakit Ödeme) - Banka şeklinde otomatik hesaplanır.")
+
+    # Gösterim için sütun adlandırma
+    df_editor = df_hesap.copy()
+    df_editor.columns = ["Personel", "Nakit Ft. Tutarı Top", "Nakit Ödeme Tutarı Topl", "Banka", "Toplam Tahsilat"]
+
+    # Sadece Banka sütununu düzenlenebilir yap, diğerlerini kilitle
+    edited_df = st.data_editor(
+        df_editor,
+        disabled=["Personel", "Nakit Ft. Tutarı Top", "Nakit Ödeme Tutarı Topl", "Toplam Tahsilat"],
+        column_config={
+            "Personel": st.column_config.TextColumn("Personel"),
+            "Nakit Ft. Tutarı Top": st.column_config.NumberColumn("Nakit Ft. Tutarı Top", format="%.2f ₺"),
+            "Nakit Ödeme Tutarı Topl": st.column_config.NumberColumn("Nakit Ödeme Tutarı Topl", format="%.2f ₺"),
+            "Banka": st.column_config.NumberColumn("Banka (Manuel Giriş)", format="%.2f ₺", min_value=0.0),
+            "Toplam Tahsilat": st.column_config.NumberColumn("Toplam Tahsilat", format="%.2f ₺"),
+        },
+        hide_index=True,
+        use_container_width=True,
+        key="hesap_alimi_editor"
+    )
+
+    # Düzenlenen verileri güncelleyip hesaplamayı yeniden yap
+    devises_made = False
+    for idx, row in edited_df.iterrows():
+        p_name = row["Personel"]
+        b_val = float(row["Banka"]) if pd.notna(row["Banka"]) else 0.0
+        
+        if st.session_state.banka_girisleri.get(p_name) != b_val:
+            st.session_state.banka_girisleri[p_name] = b_val
+            devises_made = True
+
+    if devises_made:
+        # Anlık oturum verilerini güncelle ve sayfayı yenile
+        for p_name, b_val in st.session_state.banka_girisleri.items():
+            st.session_state.veriler.loc[st.session_state.veriler["personel"] == p_name, "banka"] = b_val
+            st.session_state.veriler.loc[st.session_state.veriler["personel"] == p_name, "toplam_tahsilat"] = (
+                st.session_state.veriler.loc[st.session_state.veriler["personel"] == p_name, "nakit_ft_tutari_top"] +
+                st.session_state.veriler.loc[st.session_state.veriler["personel"] == p_name, "nakit_odeme_tutari_top"] -
+                b_val
+            )
+        st.rerun()
 
     if personel_listesi:
-        hesap_p_secim = st.selectbox("Hesap Alımı Yapılacak Personeli Seçin:", personel_listesi, key="hesap_p_select")
-        
-        p_hesap_df = df_hesap[df_hesap["personel"] == hesap_p_secim]
+        st.markdown("---")
+        hesap_p_secim = st.selectbox("Seçili Personel Detayı Göster:", personel_listesi, key="hesap_p_select")
+        p_hesap_df = edited_df[edited_df["Personel"] == hesap_p_secim]
 
         if not p_hesap_df.empty:
-            nft = float(p_hesap_df["nakit_ft_tutari_top"].values[0])
-            nod = float(p_hesap_df["nakit_odeme_tutari_top"].values[0])
-            top_tah = float(p_hesap_df["toplam_tahsilat"].values[0])
+            nft = float(p_hesap_df["Nakit Ft. Tutarı Top"].values[0])
+            nod = float(p_hesap_df["Nakit Ödeme Tutarı Topl"].values[0])
+            bnk = float(p_hesap_df["Banka"].values[0])
+            top_tah = (nft + nod) - bnk
 
             st.markdown(f"**{hesap_p_secim}** Günlük Tahsilat Detayı:")
             
-            h_col1, h_col2, h_col3 = st.columns(3)
-            h_col1.metric("Nakit Ft. Tutarı Top.", f"{nft:,.2f} ₺")
-            h_col2.metric("Nakit Ödeme Tutarı Topl.", f"{nod:,.2f} ₺")
-            h_col3.metric("Toplam Tahsilat", f"{top_tah:,.2f} ₺")
+            h_col1, h_col2, h_col3, h_col4 = st.columns(4)
+            h_col1.metric("Nakit Ft. Tutarı Top", f"{nft:,.2f} ₺")
+            h_col2.metric("Nakit Ödeme Tutarı Topl", f"{nod:,.2f} ₺")
+            h_col3.metric("Banka", f"{bnk:,.2f} ₺")
+            h_col4.metric("Toplam Tahsilat", f"{top_tah:,.2f} ₺")
 
-        st.markdown("#### 📋 Tüm Personellerin Hesap Alım Özeti Tablosu")
-        df_hesap_goster = df_hesap.copy()
-        df_hesap_goster.columns = ["Personel", "Nakit Ft. Tutarı Top. (₺)", "Nakit Ödeme Tutarı Topl. (₺)", "Toplam Tahsilat (₺)"]
-        st.dataframe(df_hesap_goster, use_container_width=True)
 else:
-    st.info("Hesap Alımı verilerini görmek için lütfen içerisinde 'Nakit Ft. Tutarı Top' ve 'Nakit Ödeme Tutarı Topl.' alanları bulunan Excel dosyanızı yükleyin.")
+    st.info("Hesap Alımı verilerini görmek için lütfen içerisinde 'Nakit Ft. Tutarı Top' ve 'Nakit Ödeme Tutarı Topl' alanları bulunan Excel dosyanızı yükleyin.")
 
 st.markdown("---")
 
