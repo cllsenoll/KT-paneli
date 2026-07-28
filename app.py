@@ -1,18 +1,23 @@
+import io
 import pandas as pd
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+import streamlit as st
+
+# --- STREAMLIT SAYFA YAPILANDIRMASI ---
+st.set_page_config(page_title="Lojistik Operasyon & Zimmet Takip", layout="wide")
+
+st.title("📦 Lojistik Şube Operasyon ve Zimmet Takip Paneli")
 
 # --- GENEL STİL TANIMLARI ---
 DARK_BLUE = "1F4E78"
 LIGHT_BLUE = "D9E1F2"
 GRAY_HEADER = "595959"
-GRAY_LIGHT = "F2F2F2"
 WHITE = "FFFFFF"
 
 font_header = Font(name="Calibri", size=11, bold=True, color=WHITE)
 font_bold = Font(name="Calibri", size=11, bold=True)
-
 fill_dark_blue = PatternFill(start_color=DARK_BLUE, end_color=DARK_BLUE, fill_type="solid")
 fill_light_blue = PatternFill(start_color=LIGHT_BLUE, end_color=LIGHT_BLUE, fill_type="solid")
 fill_gray_header = PatternFill(start_color=GRAY_HEADER, end_color=GRAY_HEADER, fill_type="solid")
@@ -26,21 +31,16 @@ align_right = Alignment(horizontal="right", vertical="center")
 
 
 def apply_autofit_and_styles(ws):
-    """Sütun genişliklerini otomatik ayarlar ve hücre sınırlarını çizip ızgara çizgilerini aktif eder."""
     ws.views.sheetView[0].showGridLines = True
-    
-    # Tüm hücrelere border ve varsayılan hiza uygula
     for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=ws.max_column):
         for cell in row:
             if not cell.border.left.style:
                 cell.border = thin_border
 
-    # Sütun Genişlikleri
     for col in ws.columns:
         max_len = 0
         col_letter = get_column_letter(col[0].column)
         for cell in col:
-            # Merged (birleştirilmiş) hücrelerden kaynaklı hatayı önlemek için
             if type(cell).__name__ == 'MergedCell':
                 continue
             val_str = str(cell.value or '')
@@ -49,16 +49,13 @@ def apply_autofit_and_styles(ws):
         ws.column_dimensions[col_letter].width = max(max_len + 5, 14)
 
 
-# ==========================================
-# 1. DOSYA: AT ZİMMET İZLEME.xlsx
-# ==========================================
-def generate_at_zimmet_izleme(df_raw, filename="AT_ZIMMET_IZLEME.xlsx"):
+# --- EXCEL ÜRETİCİ FONKSİYONLAR (RAM / BytesIO İÇİN) ---
+
+def generate_at_zimmet_izleme_bytes(df_raw):
     wb = openpyxl.Workbook()
     
-    # 1.1 Şube Performansı ve Kanal Dağılımı
     ws1 = wb.active
     ws1.title = "Şube Performansı"
-    
     ws1.merge_cells("A1:E1")
     ws1["A1"] = "ŞUBE PERFORMANSI VE KANAL DAĞILIMI"
     ws1["A1"].font = Font(name="Calibri", size=14, bold=True, color=WHITE)
@@ -91,7 +88,6 @@ def generate_at_zimmet_izleme(df_raw, filename="AT_ZIMMET_IZLEME.xlsx"):
             if c_idx == 5:
                 cell.number_format = "0.0%"
 
-    # 1.2 Personel Bazlı Karşılaştırmalı Teslimat Grafiği (Veri Tabanı)
     ws2 = wb.create_sheet(title="Personel Grafiği Verileri")
     ws2.append(["Personel", "Teslimat Adedi", "Hedef"])
     if 'Personel' in df_raw.columns and not df_raw.empty:
@@ -99,14 +95,11 @@ def generate_at_zimmet_izleme(df_raw, filename="AT_ZIMMET_IZLEME.xlsx"):
         for p_name, count in p_counts.items():
             ws2.append([p_name, count, 100])
 
-    # 1.3 Genel Durum ve Performans
     ws3 = wb.create_sheet(title="Genel Durum")
     ws3.append(["Metrik", "Değer"])
     ws3.append(["Toplam Dağıtıma Çıkan", total_zimmet])
     ws3.append(["Toplam Teslim Edilen", total_teslim])
-    ws3.append(["Genel Başarı Yüzdesi", f"={(total_teslim/total_zimmet):.1%}" if total_zimmet > 0 else "0.0%"])
 
-    # 1.4 Personel Zimmet & Teslim Özeti Tablosu
     ws4 = wb.create_sheet(title="Zimmet & Teslim Özeti")
     ws4.append(["Personel Adı", "Zimmet Edilen Paket", "Teslim Edilen", "Kalan Paket", "Başarı Oranı"])
     if 'Personel' in df_raw.columns and not df_raw.empty:
@@ -120,16 +113,14 @@ def generate_at_zimmet_izleme(df_raw, filename="AT_ZIMMET_IZLEME.xlsx"):
     for ws in wb.worksheets:
         apply_autofit_and_styles(ws)
         
-    wb.save(filename)
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer
 
 
-# ==========================================
-# 2. DOSYA: PERSONEL HESAP ALIMI EKRANI.xlsx
-# ==========================================
-def generate_personel_hesap_alimi(df_raw, filename="PERSONEL_HESAP_ALIMI_EKRANI.xlsx"):
+def generate_personel_hesap_alimi_bytes(df_raw):
     wb = openpyxl.Workbook()
-    
-    # 2.1 Personel Hesap Alımı Ekranı
     ws1 = wb.active
     ws1.title = "Hesap Alımı Ekranı"
     
@@ -157,7 +148,6 @@ def generate_personel_hesap_alimi(df_raw, filename="PERSONEL_HESAP_ALIMI_EKRANI.
             ws1.cell(row=r, column=3, value=0.0).number_format = '#,##0.00 TL'
             ws1.cell(row=r, column=4, value=0.0).number_format = '#,##0.00 TL'
             
-            # Toplam Tahsilat = Nakit + POS
             cell_tot = ws1.cell(row=r, column=5, value=f"=C{r}+D{r}")
             cell_tot.number_format = '#,##0.00 TL'
             cell_tot.font = font_bold
@@ -168,11 +158,10 @@ def generate_personel_hesap_alimi(df_raw, filename="PERSONEL_HESAP_ALIMI_EKRANI.
 
         end_row = start_row + len(personeller) - 1
     else:
-        # Boş veri durumu için varsayılan tek satır
         end_row = start_row
         ws1.cell(row=end_row, column=2, value="Veri Bulunamadı")
 
-    # İSTEĞİNİZ: Tüm Personellerin Toplam Tahsilat Değerleri Toplamı
+    # Personeller Toplam Tahsilat Hesabı
     tot_row = end_row + 2
     ws1.cell(row=tot_row, column=2, value="PERSONELLER TOPLAM TAHSİLAT HESABI:").font = font_bold
     ws1.cell(row=tot_row, column=2).alignment = align_right
@@ -182,7 +171,6 @@ def generate_personel_hesap_alimi(df_raw, filename="PERSONEL_HESAP_ALIMI_EKRANI.
     sum_cell.fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
     sum_cell.number_format = '#,##0.00 TL'
 
-    # 2.2 Tüm Personellerin Hesap Alımı Özeti Tablosu
     ws2 = wb.create_sheet(title="Hesap Alımı Özeti")
     ws2.append(["Personel", "Nakit", "POS", "Genel Toplam"])
     if len(personeller) > 0:
@@ -192,13 +180,13 @@ def generate_personel_hesap_alimi(df_raw, filename="PERSONEL_HESAP_ALIMI_EKRANI.
     for ws in wb.worksheets:
         apply_autofit_and_styles(ws)
 
-    wb.save(filename)
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer
 
 
-# ==========================================
-# 3. DOSYA: F4 ÖDEME LİSTESİ.xlsx
-# ==========================================
-def generate_f4_odeme_listesi(df_raw, filename="F4_ODEME_LISTESI.xlsx"):
+def generate_f4_odeme_listesi_bytes(df_raw):
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "F4 Ödeme Listesi"
@@ -234,14 +222,26 @@ def generate_f4_odeme_listesi(df_raw, filename="F4_ODEME_LISTESI.xlsx"):
     ws.auto_filter.ref = f"A3:F{max_row}"
 
     apply_autofit_and_styles(ws)
-    wb.save(filename)
+    
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer
 
 
-# ==========================================
-# TEST İŞLEMİ
-# ==========================================
-if __name__ == "__main__":
-    raw_data = {
+# --- EKRAN / STREAMLIT ARAYÜZÜ ---
+
+# 1. Dosya Yükleme veya Varsayılan Veri
+uploaded_file = st.sidebar.file_uploader("Veri Dosyası Yükleyin (CSV / Excel)", type=["xlsx", "xls", "csv"])
+
+if uploaded_file is not None:
+    if uploaded_file.name.endswith(".csv"):
+        df = pd.read_csv(uploaded_file)
+    else:
+        df = pd.read_excel(uploaded_file)
+else:
+    st.sidebar.info("Örnek veri seti kullanılıyor.")
+    df = pd.DataFrame({
         'Takip No': ['TK1001', 'TK1002', 'TK1003', 'TK1004'],
         'Personel': ['Ahmet Yılmaz', 'Mehmet Demir', 'Ahmet Yılmaz', 'Ayşe Kaya'],
         'Durum': ['Teslim Edildi', 'Teslim Edildi', 'İade', 'Teslim Edildi'],
@@ -249,10 +249,43 @@ if __name__ == "__main__":
         'Ödeme Tipi': ['Nakit', 'POS', 'Nakit', 'POS'],
         'Tutar': [150.00, 320.50, 0.00, 450.00],
         'Ödeme Durumu': ['Tahsil Edildi', 'Tahsil Edildi', 'İptal', 'Tahsil Edildi']
-    }
-    df = pd.DataFrame(raw_data)
+    })
 
-    generate_at_zimmet_izleme(df)
-    generate_personel_hesap_alimi(df)
-    generate_f4_odeme_listesi(df)
-    print("İşlem başarıyla tamamlandı. 3 ayrı dosya oluşturuldu.")
+# 2. Ekranda Verileri Göster
+st.subheader("📋 Mevcut Veri Listesi")
+st.dataframe(df, use_container_width=True)
+
+st.markdown("---")
+st.subheader("📥 Özel Hazırlanan Excel Raporlarını İndir")
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.write("**AT ZİMMET İZLEME**")
+    buf1 = generate_at_zimmet_izleme_bytes(df)
+    st.download_button(
+        label="📄 AT Zimmet İzleme İndir",
+        data=buf1,
+        file_name="AT_ZIMMET_IZLEME.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+with col2:
+    st.write("**PERSONEL HESAP ALIMI**")
+    buf2 = generate_personel_hesap_alimi_bytes(df)
+    st.download_button(
+        label="📄 Hesap Alımı Ekranı İndir",
+        data=buf2,
+        file_name="PERSONEL_HESAP_ALIMI_EKRANI.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+with col3:
+    st.write("**F4 ÖDEME LİSTESİ**")
+    buf3 = generate_f4_odeme_listesi_bytes(df)
+    st.download_button(
+        label="📄 F4 Ödeme Listesi İndir",
+        data=buf3,
+        file_name="F4_ODEME_LISTESI.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
