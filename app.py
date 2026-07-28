@@ -181,6 +181,9 @@ if "tahsilatlar" not in st.session_state:
 if "banka_girisleri" not in st.session_state:
     st.session_state.banka_girisleri = {}
 
+if "ana_kasa_val" not in st.session_state:
+    st.session_state.ana_kasa_val = 0.0
+
 # Üst Başlık ve Logo
 col_logo, col_title = st.columns([1, 3])
 
@@ -579,7 +582,7 @@ if uploaded_files:
                             if str(raw_p).lower() in ["nan", "", "none", "null", "toplam"]:
                                 continue
                             
-                            matched_p = match_personel_name(raw_p, st.session_state.personeller)
+                            matched_p = match_personel_name(raw_p, str.session_state.personeller)
                             if not matched_p:
                                 matched_p = re.sub(r'\s+', ' ', str(raw_p).strip()).upper()
 
@@ -730,7 +733,7 @@ if not df_veriler.empty:
 st.markdown("---")
 
 # ==========================================
-# 3. PERSONEL HESAP ALIMI EKRANI (AYRIŞTIRILDI)
+# 3. PERSONEL HESAP ALIMI EKRANI (GÜNCELLENDİ)
 # ==========================================
 st.subheader("💵 Personel Hesap Alımı Ekranı")
 
@@ -744,7 +747,31 @@ if not df_hesap_verileri.empty:
     df_hesap["toplam_tahsilat"] = (df_hesap["nakit_ft_tutari_top"] + df_hesap["nakit_odeme_tutari_top"]) - df_hesap["banka"]
 
     genel_toplam_tahsilat = df_hesap["toplam_tahsilat"].sum()
+
+    # --- ANA KASA & KASA MUTABAKAT ALANI ---
     st.info(f"💵 **Şube Genel Toplam Net Tahsilat:** {genel_toplam_tahsilat:,.2f} ₺")
+
+    col_kasa1, col_kasa2 = st.columns(2)
+    with col_kasa1:
+        ana_kasa_giris = st.number_input(
+            "🏢 **Ana Kasa (₺):**", 
+            min_value=0.0, 
+            value=float(st.session_state.ana_kasa_val), 
+            step=50.0,
+            key="ana_kasa_input"
+        )
+        st.session_state.ana_kasa_val = ana_kasa_giris
+
+    fark = ana_kasa_giris - genel_toplam_tahsilat
+
+    with col_kasa2:
+        st.markdown("🔒 **KASA DENGESİ**")
+        if fark >= 0:
+            st.metric("KASA Tutar Farkı", f"{fark:,.2f} ₺")
+            st.markdown("🟢 <h3 style='color:#10B981; margin-0;'>TAM</h3>", unsafe_allow_html=True)
+        else:
+            st.metric("KASA Tutar Farkı", f"{fark:,.2f} ₺")
+            st.markdown(f"🔴 <h3 style='color:#EF4444; margin-0;'>AÇIK: {abs(fark):,.2f} ₺</h3>", unsafe_allow_html=True)
 
     st.markdown("#### 📋 Tüm Personellerin Hesap Alım Özeti Tablosu")
     st.caption("💡 **Not:** Yalnızca **Banka** sütununa manuel tutar girebilirsiniz. Toplam Tahsilat = (Nakit Ft. + Nakit Ödeme) - Banka şeklinde otomatik hesaplanır.")
@@ -898,4 +925,4 @@ if f4_add_btn:
         st.success(f"✓ {m_adi_in} kaydı {p_sec} için eklendi.")
         st.rerun()
     else:
-        st.error("Lütfen Müşteri Adı alanını doldurun.")
+        st.error("Lütfen Müşteri Adı alanını doldurulun.")
