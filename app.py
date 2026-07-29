@@ -251,7 +251,7 @@ if "veriler" not in st.session_state:
 
 if "hesap_verileri" not in st.session_state:
     st.session_state.hesap_verileri = pd.DataFrame(columns=[
-        "personel", "nakit_ft_tutari_top", "nakit_odeme_tutari_top", "banka", "toplam_tahsilat"
+        "personel", "nakit_ft_tutari_top", "nakit_odeme_tutari_top", "banka", "toplam_tahsilat", "islem_durumu"
     ])
 
 if "tahsilatlar" not in st.session_state:
@@ -261,6 +261,9 @@ if "tahsilatlar" not in st.session_state:
 
 if "banka_girisleri" not in st.session_state:
     st.session_state.banka_girisleri = {}
+
+if "islem_durumlari" not in st.session_state:
+    st.session_state.islem_durumlari = {}
 
 if "ana_kasa_val" not in st.session_state:
     st.session_state.ana_kasa_val = 0.0
@@ -378,7 +381,6 @@ def sutun_grafigi_ciz(df_veriler):
     rects1 = ax.bar(x - width/2, df_p["teslim_edildi"], width, label='Teslim Edildi', color='#2563EB')
     rects2 = ax.bar(x + width/2, df_p["teslim_edilmedi_bekletiliyor"], width, label='Devir / Bekleyen', color='#FF6B00')
 
-    # --- BAR SÜTUNLARI ÜZERİNE SAYI DEĞERLERİNİ YAZDIRMA ---
     ax.bar_label(rects1, padding=3, color='white', fontsize=8, fontweight='bold')
     ax.bar_label(rects2, padding=3, color='white', fontsize=8, fontweight='bold')
 
@@ -532,7 +534,7 @@ if uploaded_files:
                 
                 df = df_raw.copy()
 
-                # AKIŞ A: F4 ÖDEME LİSTESİ İŞLEME (FİLTRE EKLENDİ)
+                # AKIŞ A: F4 ÖDEME LİSTESİ İŞLEME
                 if is_pure_f4_file or ("musteri_adi" in col_map and "durum" not in col_map and not is_hesap_alimi_file):
                     df["musteri_adi"] = df[col_map["musteri_adi"]].astype(str).str.strip() if "musteri_adi" in col_map else "Müşteri Belirtilmedi"
                     
@@ -552,7 +554,6 @@ if uploaded_files:
                         borc_val = float(row["fatura_borcu"])
                         aciklama_val = str(row["aciklama"])
 
-                        # --- KRİTİK FİLTRE: FATURA BORCU 0 OLAN FİRMALAR EKLENMEZ ---
                         if borc_val == 0.0:
                             continue
 
@@ -591,13 +592,15 @@ if uploaded_files:
                         
                         banka_val = st.session_state.banka_girisleri.get(matched_p, 0.0)
                         toplam_tahsilat_val = (nft_val + nod_val) - banka_val
+                        islem_val = st.session_state.islem_durumlari.get(matched_p, False)
 
                         hesap_ozet_listesi.append({
                             "personel": matched_p,
                             "nakit_ft_tutari_top": nft_val,
                             "nakit_odeme_tutari_top": nod_val,
                             "banka": banka_val,
-                            "toplam_tahsilat": toplam_tahsilat_val
+                            "toplam_tahsilat": toplam_tahsilat_val,
+                            "islem_durumu": islem_val
                         })
 
                         if matched_p not in st.session_state.personeller:
@@ -708,21 +711,22 @@ df_tahsilat = st.session_state.tahsilatlar
 personel_listesi = st.session_state.personeller
 
 # ==========================================
-# 1. METRİK KARTLARI
+# 1. METRİK KARTLARI (GÜNCELLENDİ: Tahsilat Kartı Kaldırıldı)
 # ==========================================
 toplam_zimmet = int(df_veriler["zimmet"].sum()) if not df_veriler.empty else 0
 toplam_teslim_edildi = int(df_veriler["teslim_edildi"].sum()) if not df_veriler.empty else 0
 toplam_teslim_edilmedi_bekletiliyor = int(df_veriler["teslim_edilmedi_bekletiliyor"].sum()) if not df_veriler.empty else 0
 
-toplam_nakit = float(df_veriler["nakit"].sum()) if not df_veriler.empty else 0.0
-toplam_kart = float(df_veriler["kart"].sum()) if not df_veriler.empty else 0.0
-toplam_tahsilat_tutar = toplam_nakit + toplam_kart
+toplam_sms = int(df_veriler["sms"].sum()) if not df_veriler.empty else 0
+toplam_imza = int(df_veriler["imza"].sum()) if not df_veriler.empty else 0
+toplam_ks = int(df_veriler["ks"].sum()) if not df_veriler.empty else 0
+toplam_kanal_teslimat = toplam_sms + toplam_imza + toplam_ks
 
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("📦 Toplam Zimmet", f"{toplam_zimmet:,}")
 m2.metric("✅ Teslim Edilen", f"{toplam_teslim_edildi:,}")
 m3.metric("🔄 Devir / Bekleyen", f"{toplam_teslim_edilmedi_bekletiliyor:,}")
-m4.metric("💰 Tahsilat Tutarı", f"₺{toplam_tahsilat_tutar:,.2f}")
+m4.metric("📱 Teslimat Kanalları", f"{toplam_kanal_teslimat:,}")
 
 st.markdown("---")
 
@@ -730,10 +734,6 @@ st.markdown("---")
 # 2. PERFORMANS VE GRAFİK PANELLERİ
 # ==========================================
 st.markdown("### 🎯 Şube Performansı ve Kanal Dağılımı")
-
-toplam_sms = int(df_veriler["sms"].sum()) if not df_veriler.empty else 0
-toplam_imza = int(df_veriler["imza"].sum()) if not df_veriler.empty else 0
-toplam_ks = int(df_veriler["ks"].sum()) if not df_veriler.empty else 0
 
 col_g1, col_g2 = st.columns([1, 1])
 
@@ -767,7 +767,6 @@ if not df_veriler.empty and df_veriler["zimmet"].sum() > 0:
 
         c_kurye_g, c_kurye_pano = st.columns([1, 1])
         
-        # Sol Sütun: Personel Özel İbre Grafiği
         with c_kurye_g:
             fig_kurye_libre = ibre_grafik_ciz(
                 k_teslim, 
@@ -778,7 +777,6 @@ if not df_veriler.empty and df_veriler["zimmet"].sum() > 0:
             )
             st.pyplot(fig_kurye_libre)
 
-        # Sağ Sütun: Personel Detay Operasyon & POS Entegrasyon Bilgi Panosu
         with c_kurye_pano:
             st.markdown(f"""
                 <div class="personel-pano-box">
@@ -820,7 +818,6 @@ if not df_veriler.empty and df_veriler["zimmet"].sum() > 0:
                 </div>
             """, unsafe_allow_html=True)
 
-# --- SÜTUN GRAFİĞİ (SAYI DEĞERLERİ EKLENMİŞ) ---
 if not df_veriler.empty and df_veriler["zimmet"].sum() > 0:
     st.markdown("#### 📊 Personel Bazlı Karşılaştırmalı Teslimat Grafiği")
     fig_sutun = sutun_grafigi_ciz(df_veriler)
@@ -829,7 +826,7 @@ if not df_veriler.empty and df_veriler["zimmet"].sum() > 0:
 st.markdown("---")
 
 # ==========================================
-# 3. PERSONEL HESAP ALIMI EKRANI
+# 3. PERSONEL HESAP ALIMI EKRANI (GÜNCELLENDİ: İşlem Sütunu ve Butonu Eklendi)
 # ==========================================
 st.subheader("💵 Personel Hesap Alımı Ekranı")
 
@@ -838,6 +835,7 @@ if not df_hesap_verileri.empty:
     
     df_hesap["banka"] = df_hesap["personel"].apply(lambda p: st.session_state.banka_girisleri.get(p, 0.0))
     df_hesap["toplam_tahsilat"] = (df_hesap["nakit_ft_tutari_top"] + df_hesap["nakit_odeme_tutari_top"]) - df_hesap["banka"]
+    df_hesap["islem_durumu"] = df_hesap["personel"].apply(lambda p: st.session_state.islem_durumlari.get(p, False))
 
     genel_toplam_tahsilat = df_hesap["toplam_tahsilat"].sum()
 
@@ -867,13 +865,20 @@ if not df_hesap_verileri.empty:
 
     st.markdown("#### 📋 Tüm Personellerin Hesap Alım Özeti Tablosu")
     
+    # Tablo Kolonlarını Düzenleme ve İşlem Butonu Entegrasyonu
     df_editor = df_hesap.copy()
-    df_editor.columns = ["Personel", "Nakit Ft. Tutarı Top", "Nakit Ödeme Tutarı Topl", "Banka", "Toplam Tahsilat"]
+    df_editor = df_editor[["islem_durumu", "personel", "nakit_ft_tutari_top", "nakit_odeme_tutari_top", "banka", "toplam_tahsilat"]]
+    df_editor.columns = ["İşlem", "Personel", "Nakit Ft. Tutarı Top", "Nakit Ödeme Tutarı Topl", "Banka", "Toplam Tahsilat"]
 
     edited_df = st.data_editor(
         df_editor,
         disabled=["Personel", "Nakit Ft. Tutarı Top", "Nakit Ödeme Tutarı Topl", "Toplam Tahsilat"],
         column_config={
+            "İşlem": st.column_config.CheckboxColumn(
+                "İşlem",
+                help="Sağa kaydırınca Onaylandı (Yeşil), Sola kaydırınca Beklemede (Kırmızı)",
+                default=False
+            ),
             "Personel": st.column_config.TextColumn("Personel"),
             "Nakit Ft. Tutarı Top": st.column_config.NumberColumn("Nakit Ft. Tutarı Top", format="%.2f ₺"),
             "Nakit Ödeme Tutarı Topl": st.column_config.NumberColumn("Nakit Ödeme Tutarı Topl", format="%.2f ₺"),
@@ -889,14 +894,20 @@ if not df_hesap_verileri.empty:
     for idx, row in edited_df.iterrows():
         p_name = row["Personel"]
         b_val = float(row["Banka"]) if pd.notna(row["Banka"]) else 0.0
+        islem_val = bool(row["İşlem"]) if pd.notna(row["İşlem"]) else False
         
-        if st.session_state.banka_girisleri.get(p_name) != b_val:
+        if st.session_state.banka_girisleri.get(p_name) != b_val or st.session_state.islem_durumlari.get(p_name) != islem_val:
             st.session_state.banka_girisleri[p_name] = b_val
+            st.session_state.islem_durumlari[p_name] = islem_val
             devises_made = True
 
     if devises_made:
-        for p_name, b_val in st.session_state.banka_girisleri.items():
+        for p_name in st.session_state.banka_girisleri.keys():
+            b_val = st.session_state.banka_girisleri.get(p_name, 0.0)
+            i_val = st.session_state.islem_durumlari.get(p_name, False)
+            
             st.session_state.hesap_verileri.loc[st.session_state.hesap_verileri["personel"] == p_name, "banka"] = b_val
+            st.session_state.hesap_verileri.loc[st.session_state.hesap_verileri["personel"] == p_name, "islem_durumu"] = i_val
             st.session_state.hesap_verileri.loc[st.session_state.hesap_verileri["personel"] == p_name, "toplam_tahsilat"] = (
                 st.session_state.hesap_verileri.loc[st.session_state.hesap_verileri["personel"] == p_name, "nakit_ft_tutari_top"] +
                 st.session_state.hesap_verileri.loc[st.session_state.hesap_verileri["personel"] == p_name, "nakit_odeme_tutari_top"] -
@@ -920,7 +931,6 @@ if personel_listesi:
     if not df_tahsilat.empty and "Personel" in df_tahsilat.columns:
         p_f4_df = df_tahsilat[df_tahsilat["Personel"] == f4_personel_secim]
 
-        # --- FİLTRELEME: FATURA BORCU 0'DAN BÜYÜK OLANLARI AL ---
         if not p_f4_df.empty:
             p_f4_df = p_f4_df[p_f4_df["Fatura Borcu (₺)"] > 0]
 
