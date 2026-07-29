@@ -107,6 +107,15 @@ st.markdown("""
         padding: 0;
     }
 
+    /* Personel Detay Pano Kartı */
+    .personel-pano-box {
+        background: linear-gradient(135deg, #1C2541 0%, #16203B 100%);
+        border: 1px solid #2A385B;
+        border-radius: 14px;
+        padding: 18px 22px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
     /* Turuncu ve Mavi Butonlar */
     .stButton>button {
         width: 100%;
@@ -732,21 +741,29 @@ with col_g2:
     fig_pasta = pasta_grafigi_ciz(toplam_sms, toplam_imza, toplam_ks)
     st.pyplot(fig_pasta)
 
-# --- YENİ EKLENEN: PERSONEL BAZLI İBRE GRAFİĞİ GÖRÜNTÜLEME ALANI ---
+# --- PERSONEL BAZLI İBRE GRAFİĞİ VE YAN PANO GÖRÜNTÜLEME ALANI ---
 if not df_veriler.empty and df_veriler["zimmet"].sum() > 0:
     st.markdown("---")
-    st.markdown("### 👤 Personel Özel İbre Performansı")
+    st.markdown("### 👤 Personel Özel İbre Performansı ve Detay Panosu")
     
     mevcut_p_list = df_veriler["personel"].unique().tolist()
-    secilen_kurye = st.selectbox("Performansını İbre Grafiği ile Görmek İstediğiniz Personeli Seçin:", mevcut_p_list)
+    secilen_kurye = st.selectbox("Performansını İbre Grafiği ve Panoda Görmek İstediğiniz Personeli Seçin:", mevcut_p_list)
 
     kurye_df = df_veriler[df_veriler["personel"] == secilen_kurye]
     if not kurye_df.empty:
         k_zimmet = int(kurye_df["zimmet"].sum())
         k_teslim = int(kurye_df["teslim_edildi"].sum())
         k_bekleyen = int(kurye_df["teslim_edilmedi_bekletiliyor"].sum())
+        k_sms = int(kurye_df["sms"].sum())
+        k_imza = int(kurye_df["imza"].sum())
+        k_ks = int(kurye_df["ks"].sum())
+        k_nakit = float(kurye_df["nakit"].sum())
+        k_kart = float(kurye_df["kart"].sum())
+        k_toplam_pos = k_nakit + k_kart
 
-        c_kurye_g, _ = st.columns([1, 1])
+        c_kurye_g, c_kurye_pano = st.columns([1, 1])
+        
+        # Sol Sütun: Personel Özel İbre Grafiği
         with c_kurye_g:
             fig_kurye_ibre = ibre_grafik_ciz(
                 k_teslim, 
@@ -756,6 +773,48 @@ if not df_veriler.empty and df_veriler["zimmet"].sum() > 0:
                 f"{secilen_kurye} AT Zimmet Performansı"
             )
             st.pyplot(fig_kurye_ibre)
+
+        # Sağ Sütun: Personel Detay Operasyon & POS Entegrasyon Bilgi Panosu
+        with c_kurye_pano:
+            st.markdown(f"""
+                <div class="personel-pano-box">
+                    <h4 style="margin-top:0; color:#2563EB; border-bottom:1px solid #2A385B; padding-bottom:8px;">
+                        📌 {secilen_kurye} — Operasyon & POS Panosu
+                    </h4>
+                    <table style="width:100%; color:#E0E6ED; font-size:0.95rem; border-collapse:collapse;">
+                        <tr style="border-bottom: 1px solid #2A385B;">
+                            <td style="padding: 6px 0;">📦 <b>AT Zimmet Sayısı:</b></td>
+                            <td style="text-align:right; font-weight:bold; color:#FFFFFF;">{k_zimmet} Adet</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #2A385B;">
+                            <td style="padding: 6px 0;">✅ <b>Teslim Edilen:</b></td>
+                            <td style="text-align:right; font-weight:bold; color:#2563EB;">{k_teslim} Adet</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #2A385B;">
+                            <td style="padding: 6px 0;">🔄 <b>Devir / Bekletiliyor:</b></td>
+                            <td style="text-align:right; font-weight:bold; color:#FF6B00;">{k_bekleyen} Adet</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #2A385B;">
+                            <td style="padding: 6px 0;">📱 <b>Teslimat Kanalları:</b></td>
+                            <td style="text-align:right; font-size:0.85rem; color:#94A3B8;">
+                                SMS: <b style="color:#FFF;">{k_sms}</b> | İmza: <b style="color:#FFF;">{k_imza}</b> | KS: <b style="color:#FFF;">{k_ks}</b>
+                            </td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #2A385B;">
+                            <td style="padding: 6px 0;">💵 <b>Nakit Tahsilat:</b></td>
+                            <td style="text-align:right; font-weight:bold; color:#10B981;">₺{k_nakit:,.2f}</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #2A385B;">
+                            <td style="padding: 6px 0;">💳 <b>POS / Kart Tahsilat:</b></td>
+                            <td style="text-align:right; font-weight:bold; color:#3B82F6;">₺{k_kart:,.2f}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; font-weight:bold; color:#FFFFFF;">💰 <b>Toplam Tahsilat:</b></td>
+                            <td style="text-align:right; font-weight:800; font-size:1.1rem; color:#F59E0B;">₺{k_toplam_pos:,.2f}</td>
+                        </tr>
+                    </table>
+                </div>
+            """, unsafe_allow_html=True)
 
 # --- SÜTUN GRAFİĞİ (SAYI DEĞERLERİ EKLENMİŞ) ---
 if not df_veriler.empty and df_veriler["zimmet"].sum() > 0:
