@@ -532,7 +532,7 @@ if uploaded_files:
                 
                 df = df_raw.copy()
 
-                # AKIŞ A: F4 ÖDEME LİSTESİ İŞLEME
+                # AKIŞ A: F4 ÖDEME LİSTESİ İŞLEME (FİLTRE EKLENDİ)
                 if is_pure_f4_file or ("musteri_adi" in col_map and "durum" not in col_map and not is_hesap_alimi_file):
                     df["musteri_adi"] = df[col_map["musteri_adi"]].astype(str).str.strip() if "musteri_adi" in col_map else "Müşteri Belirtilmedi"
                     
@@ -551,6 +551,10 @@ if uploaded_files:
                         musteri_val = str(row["musteri_adi"]) if str(row["musteri_adi"]).lower() not in ["nan", "none", ""] else "Müşteri Belirtilmedi"
                         borc_val = float(row["fatura_borcu"])
                         aciklama_val = str(row["aciklama"])
+
+                        # --- KRİTİK FİLTRE: FATURA BORCU 0 OLAN FİRMALAR EKLENMEZ ---
+                        if borc_val == 0.0:
+                            continue
 
                         matched_p = find_personel_by_customer(musteri_val, PERSONEL_MUSTERI_HARITASI)
                         
@@ -765,14 +769,14 @@ if not df_veriler.empty and df_veriler["zimmet"].sum() > 0:
         
         # Sol Sütun: Personel Özel İbre Grafiği
         with c_kurye_g:
-            fig_kurye_ibre = ibre_grafik_ciz(
+            fig_kurye_libre = ibre_grafik_ciz(
                 k_teslim, 
                 k_bekleyen, 
                 k_zimmet, 
                 f"{secilen_kurye} Teslimat Oranı", 
                 f"{secilen_kurye} AT Zimmet Performansı"
             )
-            st.pyplot(fig_kurye_ibre)
+            st.pyplot(fig_kurye_libre)
 
         # Sağ Sütun: Personel Detay Operasyon & POS Entegrasyon Bilgi Panosu
         with c_kurye_pano:
@@ -916,6 +920,10 @@ if personel_listesi:
     if not df_tahsilat.empty and "Personel" in df_tahsilat.columns:
         p_f4_df = df_tahsilat[df_tahsilat["Personel"] == f4_personel_secim]
 
+        # --- FİLTRELEME: FATURA BORCU 0'DAN BÜYÜK OLANLARI AL ---
+        if not p_f4_df.empty:
+            p_f4_df = p_f4_df[p_f4_df["Fatura Borcu (₺)"] > 0]
+
         if not p_f4_df.empty:
             df_f4_goster = p_f4_df[["Müşteri Adı", "Fatura Borcu (₺)", "Açıklama"]].reset_index(drop=True)
             df_f4_goster.index = range(1, len(df_f4_goster) + 1)
@@ -944,3 +952,5 @@ if personel_listesi:
                     file_name=f"F4_Odeme_Listesi_{f4_personel_secim.replace(' ', '_')}.csv",
                     mime="text/csv"
                 )
+        else:
+            st.warning(f"{f4_personel_secim} için borcu 0'dan büyük olan herhangi bir F4 ödeme kaydı bulunamadı.")
