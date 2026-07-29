@@ -565,8 +565,13 @@ if uploaded_files:
                         df["fatura_borcu"] = 0.0
 
                     for _, row in df.iterrows():
-                        musteri_val = str(row["musteri_adi"]) if str(row["musteri_adi"]).lower() not in ["nan", "none", ""] else "Müşteri Belirtilmedi"
                         borc_val = float(row["fatura_borcu"])
+                        
+                        # Fatura Borcu 0 olan satırlar atlanıyor
+                        if borc_val == 0:
+                            continue
+
+                        musteri_val = str(row["musteri_adi"]) if str(row["musteri_adi"]).lower() not in ["nan", "none", ""] else "Müşteri Belirtilmedi"
                         aciklama_val = str(row["aciklama"])
 
                         # Önce Müşteri Adından Otomatik Personel Tespiti Yap
@@ -858,6 +863,9 @@ if personel_listesi:
 
     if not df_tahsilat.empty and "Personel" in df_tahsilat.columns:
         p_f4_df = df_tahsilat[df_tahsilat["Personel"] == f4_personel_secim]
+
+        # Fatura Borcu 0'dan büyük olan kayıtların filtrelenmesi
+        p_f4_df = p_f4_df[p_f4_df["Fatura Borcu (₺)"] > 0]
 
         if not p_f4_df.empty:
             df_f4_goster = p_f4_df[["Müşteri Adı", "Fatura Borcu (₺)", "Açıklama"]].reset_index(drop=True)
