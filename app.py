@@ -296,7 +296,7 @@ with st.sidebar:
             st.success(f"{silinecek_personel} silindi!")
             st.rerun()
 
-# --- GRAFİK FONKSİYONLARI (TASARIM RENKLERİNE UYARLANDI) ---
+# --- GRAFİK FONKSİYONLARI ---
 def ibre_grafik_ciz(teslim_edildi, bekletiliyor, zimmet, baslik_metni, alt_metin=""):
     basari_orani = (teslim_edildi / zimmet * 100) if zimmet > 0 else 0
 
@@ -357,36 +357,6 @@ def pasta_grafigi_ciz(sms, imza, ks):
     ax.set_title("Kargo Teslimat Kanalları Dağılımı", color="white", fontsize=11, fontweight="bold", pad=10)
     return fig
 
-def personel_pasta_grafigi_ciz(personel_adi, teslim_edildi, bekletiliyor):
-    fig, ax = plt.subplots(figsize=(4, 3.2))
-    fig.patch.set_facecolor('#1C2541')
-    ax.set_facecolor('#1C2541')
-
-    degerler = [teslim_edildi, bekletiliyor]
-    etiketler = [f"Teslim ({teslim_edildi})", f"Devir ({bekletiliyor})"]
-    renkler = ['#2563EB', '#FF6B00']
-
-    if sum(degerler) == 0:
-        ax.text(0.5, 0.5, "Henüz Veri Yok", color="white", ha="center", va="center", fontsize=11)
-        ax.axis("off")
-        return fig
-
-    wedges, texts, autotexts = ax.pie(
-        degerler, 
-        labels=etiketler, 
-        autopct='%1.1f%%', 
-        startangle=90, 
-        colors=renkler,
-        textprops=dict(color="white", fontsize=9)
-    )
-
-    for autotext in autotexts:
-        autotext.set_color('white')
-        autotext.set_weight('bold')
-
-    ax.set_title(f"{personel_adi}\nTeslimat Durum Dağılımı", color="white", fontsize=10, fontweight="bold", pad=10)
-    return fig
-
 def sutun_grafigi_ciz(df_veriler):
     fig, ax = plt.subplots(figsize=(7, 3.5))
     fig.patch.set_facecolor('#1C2541')
@@ -398,6 +368,10 @@ def sutun_grafigi_ciz(df_veriler):
 
     rects1 = ax.bar(x - width/2, df_p["teslim_edildi"], width, label='Teslim Edildi', color='#2563EB')
     rects2 = ax.bar(x + width/2, df_p["teslim_edilmedi_bekletiliyor"], width, label='Devir / Bekleyen', color='#FF6B00')
+
+    # --- BAR SÜTUNLARI ÜZERİNE SAYI DEĞERLERİNİ YAZDIRMA ---
+    ax.bar_label(rects1, padding=3, color='white', fontsize=8, fontweight='bold')
+    ax.bar_label(rects2, padding=3, color='white', fontsize=8, fontweight='bold')
 
     ax.set_ylabel('Kargo Adedi', color='white')
     ax.set_title('Personel Bazlı Teslimat ve Devir Dağılımı', color='white', fontweight='bold', pad=12)
@@ -565,19 +539,12 @@ if uploaded_files:
                         df["fatura_borcu"] = 0.0
 
                     for _, row in df.iterrows():
-                        borc_val = float(row["fatura_borcu"])
-                        
-                        # Fatura Borcu 0 olan satırlar atlanıyor
-                        if borc_val == 0:
-                            continue
-
                         musteri_val = str(row["musteri_adi"]) if str(row["musteri_adi"]).lower() not in ["nan", "none", ""] else "Müşteri Belirtilmedi"
+                        borc_val = float(row["fatura_borcu"])
                         aciklama_val = str(row["aciklama"])
 
-                        # Önce Müşteri Adından Otomatik Personel Tespiti Yap
                         matched_p = find_personel_by_customer(musteri_val, PERSONEL_MUSTERI_HARITASI)
                         
-                        # Haritada Bulunamadıysa Excel Sütunundaki Personel Bilgisine Bak
                         if not matched_p and "zimmet_personel" in col_map:
                             raw_p = row[col_map["zimmet_personel"]]
                             if str(raw_p).lower() not in ["nan", "", "none", "null", "toplam"]:
@@ -728,7 +695,7 @@ df_tahsilat = st.session_state.tahsilatlar
 personel_listesi = st.session_state.personeller
 
 # ==========================================
-# 1. METRİK KARTLARI (GÖRSEL TASARIMA UYGUN)
+# 1. METRİK KARTLARI
 # ==========================================
 toplam_zimmet = int(df_veriler["zimmet"].sum()) if not df_veriler.empty else 0
 toplam_teslim_edildi = int(df_veriler["teslim_edildi"].sum()) if not df_veriler.empty else 0
@@ -765,6 +732,32 @@ with col_g2:
     fig_pasta = pasta_grafigi_ciz(toplam_sms, toplam_imza, toplam_ks)
     st.pyplot(fig_pasta)
 
+# --- YENİ EKLENEN: PERSONEL BAZLI İBRE GRAFİĞİ GÖRÜNTÜLEME ALANI ---
+if not df_veriler.empty and df_veriler["zimmet"].sum() > 0:
+    st.markdown("---")
+    st.markdown("### 👤 Personel Özel İbre Performansı")
+    
+    mevcut_p_list = df_veriler["personel"].unique().tolist()
+    secilen_kurye = st.selectbox("Performansını İbre Grafiği ile Görmek İstediğiniz Personeli Seçin:", mevcut_p_list)
+
+    kurye_df = df_veriler[df_veriler["personel"] == secilen_kurye]
+    if not kurye_df.empty:
+        k_zimmet = int(kurye_df["zimmet"].sum())
+        k_teslim = int(kurye_df["teslim_edildi"].sum())
+        k_bekleyen = int(kurye_df["teslim_edilmedi_bekletiliyor"].sum())
+
+        c_kurye_g, _ = st.columns([1, 1])
+        with c_kurye_g:
+            fig_kurye_ibre = ibre_grafik_ciz(
+                k_teslim, 
+                k_bekleyen, 
+                k_zimmet, 
+                f"{secilen_kurye} Teslimat Oranı", 
+                f"{secilen_kurye} AT Zimmet Performansı"
+            )
+            st.pyplot(fig_kurye_ibre)
+
+# --- SÜTUN GRAFİĞİ (SAYI DEĞERLERİ EKLENMİŞ) ---
 if not df_veriler.empty and df_veriler["zimmet"].sum() > 0:
     st.markdown("#### 📊 Personel Bazlı Karşılaştırmalı Teslimat Grafiği")
     fig_sutun = sutun_grafigi_ciz(df_veriler)
@@ -863,9 +856,6 @@ if personel_listesi:
 
     if not df_tahsilat.empty and "Personel" in df_tahsilat.columns:
         p_f4_df = df_tahsilat[df_tahsilat["Personel"] == f4_personel_secim]
-
-        # Fatura Borcu 0'dan büyük olan kayıtların filtrelenmesi
-        p_f4_df = p_f4_df[p_f4_df["Fatura Borcu (₺)"] > 0]
 
         if not p_f4_df.empty:
             df_f4_goster = p_f4_df[["Müşteri Adı", "Fatura Borcu (₺)", "Açıklama"]].reset_index(drop=True)
